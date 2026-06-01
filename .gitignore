@@ -16,10 +16,11 @@ gateway/usage.json
 **/*.pyc
 **/uv.lock
 **/.pytest_cache/
+*.json
+*.faiss
 
 # Editors
 .vscode/
 .idea/
 .DS_Store
 _README.md
-usage.json
