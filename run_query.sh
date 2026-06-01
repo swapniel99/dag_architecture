@@ -16,14 +16,14 @@ QUERY_ID="$1"
 NO_CLEAR=0
 [[ "$2" == "--no-clear" ]] && NO_CLEAR=1
 
-QUERY_FILE="$QUERY_DIR/query_${QUERY_ID}.txt"
+QUERY_FILE="$QUERY_DIR/${QUERY_ID}.txt"
 
 if [[ ! -f "$QUERY_FILE" ]]; then
     echo "Error: no query file for '$QUERY_ID' (looked for $QUERY_FILE)"
     exit 1
 fi
 
-QUERY="$(cat "$QUERY_FILE")"
+read -r QUERY < "$QUERY_FILE"
 
 if [[ $NO_CLEAR -eq 0 ]]; then
     bash "$(dirname "$0")/clear_state.sh"
@@ -32,4 +32,4 @@ fi
 echo "Query [$QUERY_ID]: $QUERY"
 echo ""
 
-uv run python -u agent7.py "$QUERY"
+uv run python -u flow.py "$QUERY"
