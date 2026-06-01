@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import logging
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -39,6 +40,8 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent))
 import artifacts as _artifacts  # noqa: E402
 import memory as _memory  # noqa: E402
+
+logging.basicConfig(level=logging.WARNING)
 
 MAX_SEARCH_RESULTS = 5  # hard cap — Tavily prices per result
 
