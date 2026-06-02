@@ -105,7 +105,11 @@ def handle_critic_verdict(nid: str, result, graph, recovered_branches: dict,
     carry `target` + `child` in metadata, and Planner-emitted Critics
     which do not — for the latter we derive both from graph structure.
     """
-    if (result.output or {}).get("verdict", "pass") != "fail":
+    output = result.output or {}
+    if not output:
+        print(f"  [critic] {nid} returned empty output (JSON parse failed) — treating as fail")
+        # fall through to fail handling so the branch retries rather than silently passing
+    elif output.get("verdict", "fail") != "fail":
         return False
     md = graph.g.nodes[nid].get("metadata") or {}
     target_nid = md.get("target")
@@ -119,8 +123,9 @@ def handle_critic_verdict(nid: str, result, graph, recovered_branches: dict,
         child_nid = succs[0] if succs else None
     if child_nid and child_nid in graph.g.nodes:
         graph.mark(child_nid, "skipped")
-    if target_nid and not recovered_branches.get(target_nid):
-        recovered_branches[target_nid] = True
+    MAX_PER_TARGET = 2
+    if target_nid and recovered_branches.get(target_nid, 0) < MAX_PER_TARGET:
+        recovered_branches[target_nid] = recovered_branches.get(target_nid, 0) + 1
         rationale = (result.output or {}).get("rationale", "(no rationale)")
         fr = f"critic failed target={target_nid} child={child_nid} rationale={rationale}"
         rec_nid = graph.add_node("planner", inputs=["USER_QUERY"],
@@ -130,6 +135,6 @@ def handle_critic_verdict(nid: str, result, graph, recovered_branches: dict,
         print(f"  ↪ critic-fail recovery: planner node {rec_nid} for {target_nid}")
     elif target_nid:
         cap_hit.append(target_nid)
-        print(f"  ↪ critic-fail on {target_nid} already recovered once; "
-              f"CAP HIT — branch skipped, final will reflect missing data")
+        print(f"  ↪ critic-fail on {target_nid} recovery cap ({MAX_PER_TARGET}) hit — "
+              f"branch skipped, final will reflect missing data")
     return True

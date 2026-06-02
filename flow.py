@@ -197,6 +197,7 @@ class Executor:
             graph = Graph()
             graph.add_node("planner", inputs=["USER_QUERY"])
 
+        session_start = time.time()
         print(f"\n{'═' * 78}\nsession {sid}  ─  query: {query}\n{'═' * 78}")
         # Read memory ONCE at session start; the same hits flow into every
         # skill's prompt. The S7 contract is that every cognitive role sees
@@ -213,7 +214,7 @@ class Executor:
         formatter_answer: str | None = None
         executed_count = 0
         # Per-target cap for critic-fail recovery; see P1 #5 fix below.
-        recovered_branches: dict[str, bool] = {}
+        recovered_branches: dict[str, int] = {}
         # NOTES_RUNS round-3 review #5: when the cap fires, the branch is
         # skipped silently and the final answer reflects missing data with
         # no flag. Track every second-or-later critic-fail here so the
@@ -256,7 +257,7 @@ class Executor:
                 exit_code = out.get("exit_code")
                 stdout = out.get("stdout", "")
                 stdout_preview = stdout.split("\n")[0][:80] if stdout else ""
-                print(f"[{nid}] {graph.g.nodes[nid]['skill']:18s} "
+                print(f"{time.strftime('%H:%M:%S')} +{time.time()-session_start:6.1f}s [{nid}] {graph.g.nodes[nid]['skill']:18s} "
                       f"{graph.g.nodes[nid]['status']:8s} "
                       f"({result.elapsed_s:.1f}s)"
                       + (f"  q={q[:80]}" if q else "")

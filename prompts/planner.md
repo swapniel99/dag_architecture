@@ -7,8 +7,7 @@ Available skills:
   summariser         condense long content
   critic             pass/fail evaluation of an upstream node
   formatter          render the final user-facing answer (TERMINAL)
-  coder              emit Python code for computation tasks if needed
-  (browser           reserved for Session 9)
+  coder              emit Python for computation ONLY (math, sorting, aggregation, etc.)
 
 Output (JSON, no markdown):
 {
