@@ -230,9 +230,20 @@ class Executor:
                     started_at=time.time() - result.elapsed_s,
                     completed_at=time.time(),
                 ))
+                q = (graph.g.nodes[nid].get("metadata") or {}).get("question")
+                out = result.output or {}
+                rationale = out.get("rationale")
+                verdict = out.get("verdict")
+                found = out.get("found")
+                summary = out.get("summary")
                 print(f"[{nid}] {graph.g.nodes[nid]['skill']:18s} "
                       f"{graph.g.nodes[nid]['status']:8s} "
                       f"({result.elapsed_s:.1f}s)"
+                      + (f"  q={q[:80]}" if q else "")
+                      + (f"  rationale={rationale[:80]}" if rationale else "")
+                      + (f"  verdict={verdict}" if verdict else "")
+                      + (f"  found={found}" if found is not None else "")
+                      + (f"  summary={summary[:80]}" if summary else "")
                       + (f"  err={result.error[:80]}" if result.error else ""))
 
                 if result.success:
