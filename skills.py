@@ -145,8 +145,11 @@ def _format_memory_hits(hits: list) -> str:
 
 def render_prompt(skill: Skill, query: str, resolved: list[dict],
                   failure_report: str | None = None,
-                  memory_hits: list | None = None) -> str:
+                  memory_hits: list | None = None,
+                  question: str | None = None) -> str:
     parts = [skill.prompt_template().rstrip(), "", f"USER_QUERY: {query}"]
+    if question:
+        parts += [f"QUESTION: {question}"]
     if failure_report:
         parts += ["", f"FAILURE:\n{failure_report}"]
     # Memory hits — FAISS-ranked MemoryItems from session-start memory.read.
@@ -244,8 +247,9 @@ async def run_skill(skill: Skill, node_id: str, graph_nodes,
     skills are LLM-backed and route through the V8 gateway with
     agent=<skill_name> so agent_routing.yaml + cost-by-agent kick in."""
     resolved = resolve_inputs(graph_nodes[node_id]["inputs"], graph_nodes, query)
+    question = (graph_nodes[node_id].get("metadata") or {}).get("question") or None
     rendered = render_prompt(skill, query, resolved, failure_report,
-                             memory_hits=memory_hits)
+                             memory_hits=memory_hits, question=question)
     started = time.time()
 
     if skill.name == "sandbox_executor":
