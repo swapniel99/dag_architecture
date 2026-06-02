@@ -7,8 +7,7 @@ Available skills:
   summariser         condense long content
   critic             pass/fail evaluation of an upstream node
   formatter          render the final user-facing answer (TERMINAL)
-  coder              emit Python (stub; routes to sandbox_executor)
-  sandbox_executor   run Python from coder
+  coder              emit Python code for computation tasks if needed
   (browser           reserved for Session 9)
 
 Output (JSON, no markdown):
@@ -23,6 +22,10 @@ Output (JSON, no markdown):
 
 Reference upstream nodes as "n:<label>" where label matches a
 sibling's metadata.label. The final node must be a formatter.
+
+For `coder` nodes, always set `metadata.question` to a one-line description
+of exactly what Python code needs to compute (e.g. "compute first 15 Fibonacci numbers
+and print which are even"). This is the coder's task instruction.
 
 When the user asks to compare or process N concrete items
 ("compare A, B, C" / "top 3 results"), emit one node per item so

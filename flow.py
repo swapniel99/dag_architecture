@@ -130,9 +130,26 @@ class Graph:
                 if inp.startswith("n:") and inp in self.g.nodes:
                     self.g.add_edge(inp, new_id)
 
+        last_internal: str | None = None
         for child_skill in src_def.internal_successors:
             nid = self.add_node(child_skill, inputs=[src_nid])
             added.append(nid)
+            last_internal = nid
+
+        # Re-wire pending successors of src_nid to wait for the last internal
+        # successor instead (e.g. formatter waits for sandbox_executor, not coder).
+        if last_internal:
+            for other_nid in list(self.g.successors(src_nid)):
+                if other_nid == last_internal:
+                    continue
+                if self.g.nodes[other_nid].get("status") != "pending":
+                    continue
+                self.g.nodes[other_nid]["inputs"] = [
+                    last_internal if i == src_nid else i
+                    for i in self.g.nodes[other_nid]["inputs"]
+                ]
+                self.g.remove_edge(src_nid, other_nid)
+                self.g.add_edge(last_internal, other_nid)
 
         # Critic auto-insertion: place a Critic before each newly-added
         # child so the child only runs after Critic passes.
@@ -236,14 +253,18 @@ class Executor:
                 verdict = out.get("verdict")
                 found = out.get("found")
                 summary = out.get("summary")
+                exit_code = out.get("exit_code")
+                stdout = out.get("stdout", "")
+                stdout_preview = stdout.split("\n")[0][:80] if stdout else ""
                 print(f"[{nid}] {graph.g.nodes[nid]['skill']:18s} "
                       f"{graph.g.nodes[nid]['status']:8s} "
                       f"({result.elapsed_s:.1f}s)"
                       + (f"  q={q[:80]}" if q else "")
-                      + (f"  rationale={rationale[:80]}" if rationale else "")
+                      + (f"  rationale={rationale[:80]}" if rationale and not q else "")
                       + (f"  verdict={verdict}" if verdict else "")
                       + (f"  found={found}" if found is not None else "")
                       + (f"  summary={summary[:80]}" if summary else "")
+                      + (f"  stdout={stdout_preview}" if exit_code is not None else "")
                       + (f"  err={result.error[:80]}" if result.error else ""))
 
                 if result.success:
