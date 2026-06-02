@@ -24,8 +24,7 @@ Reference upstream nodes as "n:<label>" where label matches a
 sibling's metadata.label. The final node must be a formatter.
 
 For `coder` nodes, always set `metadata.question` to a one-line description
-of exactly what Python code needs to compute (e.g. "compute first 15 Fibonacci numbers
-and print which are even"). This is the coder's task instruction.
+of exactly what Python code needs to compute. This is the coder's task instruction.
 
 When the user asks to compare or process N concrete items
 ("compare A, B, C" / "top 3 results"), emit one node per item so
