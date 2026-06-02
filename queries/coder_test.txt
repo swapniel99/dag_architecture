@@ -1,1 +1,1 @@
-Compute the first 15 Fibonacci numbers and tell me which ones are even.
+Compute the first 15 Fibonacci numbers and give just the even ones along with their square roots as a csv only and verify the format only.

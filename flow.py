@@ -257,12 +257,13 @@ class Executor:
                 exit_code = out.get("exit_code")
                 stdout = out.get("stdout", "")
                 stdout_preview = stdout.split("\n")[0][:80] if stdout else ""
-                print(f"{time.strftime('%H:%M:%S')} +{time.time()-session_start:6.1f}s [{nid}] {graph.g.nodes[nid]['skill']:18s} "
+                print(f"{time.strftime('%H:%M:%S')} +{time.time()-session_start:6.1f}s [{nid:3s}] {graph.g.nodes[nid]['skill']:20s} "
                       f"{graph.g.nodes[nid]['status']:8s} "
                       f"({result.elapsed_s:.1f}s)"
-                      + (f"  q={q[:80]}" if q else "")
+                      + (f"  q={q[:80]}" if q and not verdict else "")
                       + (f"  rationale={rationale[:80]}" if rationale and not q else "")
                       + (f"  verdict={verdict}" if verdict else "")
+                      + (f"  reason={out.get('rationale','')[:80]}" if verdict else "")
                       + (f"  found={found}" if found is not None else "")
                       + (f"  summary={summary[:80]}" if summary else "")
                       + (f"  stdout={stdout_preview}" if exit_code is not None else "")
