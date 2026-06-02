@@ -151,10 +151,14 @@ class Graph:
                 self.g.remove_edge(src_nid, other_nid)
                 self.g.add_edge(last_internal, other_nid)
 
-        # Critic auto-insertion: place a Critic before each newly-added
-        # child so the child only runs after Critic passes.
-        if src_def.critic and added:
-            for child_nid in list(added):
+        # Critic auto-insertion: place a Critic before each pending child
+        # (both newly-added and pre-wired by planner) so the child only
+        # runs after Critic passes.
+        if src_def.critic:
+            to_guard = [n for n in self.g.successors(src_nid)
+                        if self.g.nodes[n].get("status") == "pending"
+                        and self.g.nodes[n].get("skill") != "critic"]
+            for child_nid in to_guard:
                 self.g.remove_edge(src_nid, child_nid)
                 critic_nid = self.add_node(
                     "critic", inputs=[src_nid],
@@ -261,7 +265,7 @@ class Executor:
                       f"{graph.g.nodes[nid]['status']:8s} "
                       f"({result.elapsed_s:.1f}s)"
                       + (f"  q={q[:80]}" if q and not verdict else "")
-                      + (f"  rationale={rationale[:80]}" if rationale and not q else "")
+                      + (f"  rationale={rationale[:80]}" if rationale and not q and not verdict else "")
                       + (f"  verdict={verdict}" if verdict else "")
                       + (f"  reason={out.get('rationale','')[:80]}" if verdict else "")
                       + (f"  found={found}" if found is not None else "")
