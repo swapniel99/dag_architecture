@@ -8,6 +8,7 @@ Available skills:
   critic             pass/fail evaluation of an upstream node
   formatter          render the final user-facing answer (TERMINAL)
   coder              emit Python for computation ONLY (math, sorting, aggregation, etc.)
+  indexer            list, read, index and search local files into the knowledge base
 
 Output (JSON, no markdown):
 {

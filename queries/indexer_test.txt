@@ -1,0 +1,1 @@
+Index all markdown files in the papers/ directory, then search the knowledge base for three contributions of attantion.
