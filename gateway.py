@@ -33,7 +33,6 @@ GATEWAY_V8_DIR = Path(
     _os.environ.get("EAGV3_GATEWAY_DIR")
     or (Path(__file__).resolve().parent.parent / "gateway")
 ).resolve()
-print(GATEWAY_V8_DIR)
 GATEWAY_URL = "http://localhost:8108"
 
 
