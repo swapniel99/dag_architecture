@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Prerequisites
+
+The orchestrator bridges to **llm_gatewayV8** on `localhost:8108`. The gateway must be built and reachable before running `flow.py`. `gateway.py` auto-starts it from the sibling `../gateway/` directory on first run. Override the location with `EAGV3_GATEWAY_DIR=<path>`.
+
+Copy `.env` with required API keys (Tavily, provider credentials, etc.) — `gateway.py` calls `load_dotenv()` at import time.
+
 ## Commands
 
 ```bash
@@ -15,25 +21,24 @@ uv run python flow.py "your query here"
 ./run_query.sh <query_id>          # clears state first
 ./run_query.sh <query_id> --no-clear
 
+# Run all predefined queries sequentially
+./run_all.sh
+
 # Replay a session trace
 uv run python replay.py <session_id>
 
 # Clear state (sessions + artifacts)
 ./clear_state.sh
 
-# Run tests
-uv run pytest tests/
-
-# Run a single test
-uv run pytest tests/test_recovery.py::test_plan_recovery_upstream_failure_replans
-
 # Resume a crashed session
 uv run python flow.py --resume <session_id>
 ```
 
+Pytest markers: `network` (needs internet), `embed` (needs gateway V8 embedding endpoint). Skip them with `-m "not network and not embed"`.
+
 ## Architecture
 
-This is a **growing-graph multi-agent orchestrator**. The agent loop is a `networkx.DiGraph` where each node is a typed skill and edges carry `AgentResult` payloads. Ready nodes execute in parallel via `asyncio.gather`.
+This is a **growing-graph multi-agent orchestrator**. The agent loop is a `networkx.DiGraph` where each node is a typed skill and edges carry `AgentResult` payloads. Ready nodes execute in parallel via `asyncio.gather`. Hard cap: `MAX_NODES = 60` (flow.py).
 
 ### Key files (read in this order)
 
@@ -46,7 +51,7 @@ This is a **growing-graph multi-agent orchestrator**. The agent loop is a `netwo
 | `recovery.py` | `classify_failure` + `plan_recovery` + `handle_critic_verdict` |
 | `sandbox.py` | Subprocess Python runner (usability boundary, NOT security isolation) |
 | `gateway.py` | Bridge to LLM Gateway V8 on `localhost:8108`; auto-starts the gateway if not running |
-| `persistence.py` | Session writes: `graph.pkl` + per-node JSON in `state/sessions/<sid>/` |
+| `persistence.py` | Session writes: `graph.json` + per-node JSON in `state/sessions/<sid>/` |
 | `mcp_runner.py` | Multi-turn tool-use loop for skills with `tools_allowed` |
 
 ### How the graph grows (5 actors)
@@ -60,10 +65,28 @@ This is a **growing-graph multi-agent orchestrator**. The agent loop is a `netwo
 ### Skill contract
 
 Every LLM-backed skill must return a single JSON object (no markdown fences). The orchestrator lifts these fields out:
-- `successors` — list of `NodeSpec` dicts `{skill, inputs, metadata}` 
+- `successors` — list of `NodeSpec` dicts `{skill, inputs, metadata}`
 - `nodes` — Planner-only alias for `successors`
 
 Everything else in the JSON lands in `AgentResult.output` and flows to downstream nodes.
+
+Per-skill `temperature` and `max_tokens` are tuned in `agent_config.yaml` — no code edits needed.
+
+### Available skills
+
+| Skill | Tools | Notes |
+|---|---|---|
+| `planner` | — | Decomposes queries into DAG; drives recovery re-plans |
+| `retriever` | `search_knowledge` | FAISS + memory search |
+| `researcher` | `web_search`, `fetch_url` | Multi-step web research |
+| `distiller` | — | Extracts structured fields; `critic: true` → auto-inserts Critic on outgoing edges |
+| `summariser` | — | Condenses long content |
+| `critic` | — | Pass/fail evaluator; `verdict` in output |
+| `formatter` | — | Terminal node; `output.final_answer` is what Executor returns |
+| `coder` | — | Emits `{"code": "...", "rationale": "..."}` |
+| `sandbox_executor` | — | Runs coder output; auto-chained via `internal_successors` |
+| `indexer` | `list_dir`, `read_file`, `index_document` | Populates FAISS index |
+| `browser` | — | STUB — reserved for Session 9 |
 
 ### Coder skill (student assignment)
 
@@ -80,6 +103,18 @@ The orchestrator auto-chains `sandbox_executor` after every `coder` node via `in
 - `"art:<sha>"` — artifact bytes
 - Bare string — passed through as a literal
 
+### Session persistence layout
+
+```
+state/sessions/<sid>/
+    graph.json        # NetworkX DiGraph serialised via node_link_data (not pickle)
+    query.txt
+    nodes/
+        n_001.json    # NodeState per node
+```
+
+Legacy sessions written as `graph.pkl` are tolerated on resume but new sessions always write JSON.
+
 ### Recovery policy (`recovery.py`)
 
 | Error class | Action |
@@ -89,7 +124,7 @@ The orchestrator auto-chains `sandbox_executor` after every `coder` node via `in
 | upstream_failure + skill=planner | skip — would loop |
 | upstream_failure + other skill | replan — new Planner queued |
 
-Critic-fail: child node marked `skipped`; recovery Planner queued; capped at one re-plan per branch.
+Critic-fail: child node marked `skipped`; recovery Planner queued; capped at `MAX_PER_TARGET = 2` re-plans per branch.
 
 ### Do not modify
 

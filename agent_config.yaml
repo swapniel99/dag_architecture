@@ -86,7 +86,7 @@ coder:
 
 indexer:
   prompt: prompts/indexer.md
-  tools_allowed: [list_dir, read_file, index_document]
+  tools_allowed: [list_dir, index_document]
   temperature: 0.1
   max_tokens: 1500
   description: Indexes local files into the vector knowledge base so downstream retriever nodes can search them.
