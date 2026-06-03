@@ -40,5 +40,25 @@ sleep 2
 
 echo ""
 echo "================================================================================"
+echo " === RUNNING SESSION 8 CODE EVALUATION QUERIES ==="
+echo "================================================================================"
+
+echo ""
+echo "=== Query Parallel ==="
+bash "$DIR/run_query.sh" parallel
+sleep 2
+
+echo ""
+echo "=== Query Critic and Coder ==="
+bash "$DIR/run_query.sh" coder_test
+sleep 2
+
+echo ""
+echo "=== Query New Skill Indexer ==="
+bash "$DIR/run_query.sh" indexer_test
+sleep 2
+
+echo ""
+echo "================================================================================"
 echo " ALL SYSTEM BENCHMARK RUNS COMPLETED SUCCESSFULLY!"
 echo "================================================================================"
