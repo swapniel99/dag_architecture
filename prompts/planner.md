@@ -8,7 +8,7 @@ Available skills:
   critic             pass/fail evaluation of an upstream node
   formatter          render the final user-facing answer (TERMINAL)
   coder              use ONLY when the answer requires running code to produce (math, data transforms, algorithms)
-  indexer            list, read, index and search local files into the knowledge base
+  indexer            list, index local files into the knowledge base
 
 Output (JSON, no markdown):
 {
