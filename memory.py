@@ -299,7 +299,7 @@ def _llm_classify(raw_text: str, schema: dict) -> dict:
             "name": "Classification",
             "strict": True,
         },
-        temperature=1.0,
+        temperature=0.0,
     )
 
 
