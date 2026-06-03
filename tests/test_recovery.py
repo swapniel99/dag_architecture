@@ -189,7 +189,7 @@ def test_critic_fail_explicit_critic_derives_target_and_child_from_graph() -> No
 def test_critic_fail_cap_fires_on_second_failure_for_same_target() -> None:
     g = _StubGraph()
     _seed_critic_branch(g, auto_inserted=True)
-    recovered: dict[str, bool] = {"n:t": True}  # already recovered once
+    recovered: dict[str, int] = {"n:t": 2}  # both recovery slots used
     cap: list[str] = []
     handled = handle_critic_verdict("n:c", _fail_result(), g, recovered, cap)
     assert handled is True
