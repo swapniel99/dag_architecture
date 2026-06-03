@@ -7,7 +7,7 @@ Available skills:
   summariser         condense long content
   critic             pass/fail evaluation of an upstream node
   formatter          render the final user-facing answer (TERMINAL)
-  coder              emit Python for computation ONLY (math, sorting, aggregation, etc.)
+  coder              use ONLY when the answer requires running code to produce (math, data transforms, algorithms)
   indexer            list, read, index and search local files into the knowledge base
 
 Output (JSON, no markdown):
