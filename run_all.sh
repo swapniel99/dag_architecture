@@ -44,7 +44,7 @@ echo " === RUNNING SESSION 8 CODE EVALUATION QUERIES ==="
 echo "================================================================================"
 
 echo ""
-echo "=== Query Parallel ==="
+echo "=== Query Parallel Fan Out ==="
 bash "$DIR/run_query.sh" parallel
 sleep 2
 
