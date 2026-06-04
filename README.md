@@ -2,6 +2,10 @@
 
 A NetworkX-based multi-agent system where the agent loop is a DAG of typed skill nodes that grows at runtime. Nodes execute in parallel via `asyncio.gather`; the graph is extended by five actors: Planner seed, dynamic successors, static `internal_successors`, Critic auto-insertion, and recovery re-planning.
 
+**Demo Video:** [https://youtu.be/A_ucVkTvABw](https://youtu.be/A_ucVkTvABw)
+
+![Architecture Diagram](image.png)
+
 ---
 
 ## Quickstart
