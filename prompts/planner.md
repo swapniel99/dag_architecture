@@ -46,6 +46,10 @@ has already indexed.
 
 If FAILURE appears in the prompt, do not re-emit the failing step
 on the same inputs.
+If AVAILABLE_NODES appears in FAILURE, those nodes already ran successfully.
+Reference them with "n:<label>" as inputs to new nodes — do NOT re-run those skills.
+If FAILED_NODE appears in FAILURE, do not use that node's output as an input.
+Find an alternative approach for that step (different skill, different inputs, or rephrased task).
 
 Example:
 {"rationale": "Look it up and answer.",

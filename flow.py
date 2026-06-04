@@ -166,6 +166,14 @@ class Graph:
                 )
                 self.g.add_edge(critic_nid, child_nid)
                 added.append(critic_nid)
+                # child_nid.inputs intentionally still references src_nid (not
+                # critic_nid) so resolve_inputs fetches the distiller's data.
+                # The critic→child edge enforces execution order; inputs
+                # carries the data dependency.
+                # TODO: propagate child's metadata.question into this critic's
+                # metadata so the LLM can evaluate fitness-for-purpose, not
+                # just internal consistency. Also requires updating critic.md
+                # to instruct the LLM to use the QUESTION field.
 
         return added
 
@@ -217,13 +225,10 @@ class Executor:
 
         formatter_answer: str | None = None
         executed_count = 0
-        # Per-target cap for critic-fail recovery; see P1 #5 fix below.
-        recovered_branches: dict[str, int] = {}
-        # NOTES_RUNS round-3 review #5: when the cap fires, the branch is
-        # skipped silently and the final answer reflects missing data with
-        # no flag. Track every second-or-later critic-fail here so the
-        # final log can surface it.
-        critic_fail_cap_hit: list[str] = []
+        # Global counter for critic-fail recoveries; see recovery.MAX_CRITIC_RECOVERIES.
+        # Single-element list so handle_critic_verdict can mutate it in place.
+        critic_recovery_counter: list = [0]
+        critic_cap_hit: list = []
 
         while True:
             ready = graph.ready_nodes()
@@ -276,8 +281,8 @@ class Executor:
                 if result.success:
                     if graph.g.nodes[nid]["skill"] == "critic":
                         if handle_critic_verdict(nid, result, graph,
-                                                 recovered_branches,
-                                                 critic_fail_cap_hit):
+                                                 critic_recovery_counter,
+                                                 critic_cap_hit):
                             continue
                         # verdict == pass: the child is now ready to run.
                     graph.extend_from(nid, result, registry=self.registry)
@@ -315,16 +320,11 @@ class Executor:
                     formatter_answer = json.dumps(d["result"].output)[:2000]
                     break
 
-        if critic_fail_cap_hit:
-            # Loud surface — see review round-3 #5. Without this the cap
-            # firing was invisible and the user would just see a thin
-            # formatter answer with no explanation of why.
-            print(f"\n[flow] WARNING: critic-fail cap hit on "
-                  f"{len(critic_fail_cap_hit)} branch(es): "
-                  f"{', '.join(critic_fail_cap_hit)}. "
-                  f"The final answer reflects missing data from these "
-                  f"branches because the Critic rejected the re-planned "
-                  f"output too.")
+        if critic_cap_hit:
+            print(f"\n[flow] WARNING: global critic-fail recovery cap "
+                  f"({len(critic_cap_hit)}x hit) — one or more branches "
+                  f"skipped after {critic_recovery_counter[0]} recovery attempts. "
+                  f"Final answer may reflect missing data.")
         print(f"\n{'═' * 78}\nFINAL: {formatter_answer or ''}\n{'═' * 78}\n")
         return formatter_answer or ""
 

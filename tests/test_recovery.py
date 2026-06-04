@@ -162,8 +162,8 @@ def _fail_result() -> AgentResult:
 def test_critic_fail_auto_inserted_splices_planner_and_skips_child() -> None:
     g = _StubGraph()
     _seed_critic_branch(g, auto_inserted=True)
-    recovered: dict[str, bool] = {}
-    cap: list[str] = []
+    recovered: list = [0]
+    cap: list = []
     handled = handle_critic_verdict("n:c", _fail_result(), g, recovered, cap)
     assert handled is True
     assert ("n:f", "skipped") in g._marks, "child was not skipped"
@@ -177,8 +177,8 @@ def test_critic_fail_auto_inserted_splices_planner_and_skips_child() -> None:
 def test_critic_fail_explicit_critic_derives_target_and_child_from_graph() -> None:
     g = _StubGraph()
     _seed_critic_branch(g, auto_inserted=False)
-    recovered: dict[str, bool] = {}
-    cap: list[str] = []
+    recovered: list = [0]
+    cap: list = []
     handled = handle_critic_verdict("n:c", _fail_result(), g, recovered, cap)
     assert handled is True
     assert ("n:f", "skipped") in g._marks
@@ -189,11 +189,11 @@ def test_critic_fail_explicit_critic_derives_target_and_child_from_graph() -> No
 def test_critic_fail_cap_fires_on_second_failure_for_same_target() -> None:
     g = _StubGraph()
     _seed_critic_branch(g, auto_inserted=True)
-    recovered: dict[str, int] = {"n:t": 2}  # both recovery slots used
-    cap: list[str] = []
+    recovered: list = [5]  # global cap already exhausted
+    cap: list = []
     handled = handle_critic_verdict("n:c", _fail_result(), g, recovered, cap)
     assert handled is True
-    assert cap == ["n:t"], "cap-hit should be surfaced for future logging"
+    assert cap == [True], "cap-hit should be surfaced for future logging"
     assert [a[1] for a in g._added] == [], "no second planner should be queued"
 
 
