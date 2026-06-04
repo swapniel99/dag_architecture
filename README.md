@@ -111,10 +111,10 @@ The Planner emits three independent Researcher nodes that fire in the same `asyn
 ```
 session s8-48b52d29
 22:46:52 +  2.9s  [n:1] planner     complete (1.4s)
-                         ┌─ n:2 researcher  US        (14.2s) ─┐
-           +  2.9s       ├─ n:3 researcher  Germany   ( 7.0s) ─┤  all complete at +17.1s
+                         ┌─ n:2 researcher  US        (10.2s) ─┐
+           +  2.9s       ├─ n:3 researcher  Germany   ( 7.0s) ─┤  all complete at +10.2s
                          └─ n:4 researcher  Japan     ( 6.6s) ─┘
-22:47:06 + 17.1s  [n:2] researcher  complete (14.2s)
+22:47:06 + 17.1s  [n:2] researcher  complete (10.2s)
 22:47:06 + 17.1s  [n:3] researcher  complete (7.0s)
 22:47:06 + 17.1s  [n:4] researcher  complete (6.6s)
 22:47:07 + 18.3s  [n:5] coder       complete (1.2s)
