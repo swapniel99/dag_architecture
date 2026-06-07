@@ -2,26 +2,22 @@
 
 ## flow.py — Executor & Graph
 
-**Internal successor re-wiring** (Bugfix)
-- Tracks `last_internal` node from `internal_successors` chain.
-- Pending successors of `src_nid` that were pre-wired by the planner are now re-wired to wait for `last_internal` instead (e.g. `formatter` waits for `sandbox_executor`, not `coder` directly).
-- Fixes DAG ordering so pre-wired children don't skip intermediate steps.
-
 **Critic auto-insertion scope fix** (Bugfix)
 - Previously only guarded newly-added children (`added` list).
-- Now guards ALL pending, non-critic successors of `src_nid` — including planner-pre-wired ones.
+- Now guards ALL non-critic successors of `src_nid` — including planner-pre-wired ones — by iterating `graph.g.successors(src_nid)` directly.
+- Also adds `USER_QUERY` to auto-inserted critic inputs so the critic evaluates against the real user ask, not stale FAISS memory hits.
 
-**`recovered_branches` type change** (Improvement)
-- Changed from `dict[str, bool]` to `dict[str, int]` to support the multi-retry cap in `recovery.py`.
+**Internal successor re-wiring restored** (Bugfix)
+- When coder completes with `internal_successors: [sandbox_executor]`, any pending successors of coder (e.g. formatter) are re-wired to depend on sandbox_executor instead. Without this, formatter runs in parallel with sandbox_executor and never sees execution results.
+- `last_internal` tracks the final internal successor; re-wiring swaps edges and updates `inputs` lists.
 
-**Global critic-fail recovery counter** (Bugfix)
-- Replaced `recovered_branches: dict[str, int]` with `critic_recovery_counter: list = [0]` — a mutable single-element list.
-- Old per-target cap (`MAX_PER_TARGET=2`) was keyed by target node id. Each recovery cycle produces fresh node ids, so the cap never fired in practice.
-- New global cap (`MAX_CRITIC_RECOVERIES=5` in `recovery.py`) fires correctly regardless of how many distinct nodes are targeted across cycles.
+**Fan-out empty-inputs fix** (Bugfix)
+- `for inp in raw_inputs or [src_nid]` → `for inp in raw_inputs` — empty inputs no longer fall back to the parent node.
+- When a planner emits a fan-out worker with `inputs=[]`, a structural parent edge is still added so `ready_nodes` ordering stays correct, but the parent's output does not leak into the worker's INPUTS block.
 
-**Critic auto-insertion inputs/edges comment** (Documentation)
-- Added comment explaining that `child_nid.inputs` intentionally still references `src_nid` (not `critic_nid`) after auto-insertion — critic enforces execution order via edges; data flows directly from the evaluated node.
-- Added TODO: propagate `child_nid.metadata.question` into auto-inserted critic metadata, and update `critic.md` to use the QUESTION field for fitness-for-purpose evaluation.
+**Recovery planner amnesia fix — upstream failures** (Improvement)
+- On upstream failure (`plan_recovery` → replan), recovery planner now receives `["USER_QUERY"] + prior_complete` as graph inputs, where `prior_complete` is every already-completed non-planner/non-critic node.
+- `resolve_inputs` pulls those nodes' outputs into the planner's INPUTS block; `planner.md` recovery section instructs it to wire them by id instead of re-running.
 
 ---
 
@@ -34,52 +30,67 @@
 **Default verdict flipped** (Bugfix)
 - `output.get("verdict", "pass")` → `output.get("verdict", "fail")` — safer default when key absent.
 
-**Multi-retry cap (was bool, now int)** (Improvement)
-- `recovered_branches[target]` now counts retries (int) instead of a boolean flag.
-- `MAX_PER_TARGET = 2` — allows up to 2 recovery re-plans per target before capping.
-
 **Multi-successor skip on critic fail** (Bugfix)
 - Planner-emitted critics with multiple successors previously only skipped `succs[0]` on fail. Remaining children stayed pending and could block graph termination or run with unvalidated data.
 - Now all successors beyond the first are marked skipped in the `succs[1:]` loop.
 
-**AVAILABLE_NODES and FAILED_NODE in failure report** (Improvement)
-- On critic fail, `handle_critic_verdict` now injects two new fields into the recovery planner's `failure_report`:
-  - `AVAILABLE_NODES` — all session-completed nodes with labels (excluding critics, planners, and the failed target). Sorted for determinism. Prevents recovery planner from re-running work already done.
-  - `FAILED_NODE` — label of the node whose output was rejected by the critic. Prevents recovery planner from reusing bad output.
-- Root-cause: ancestor-scoping was tried first (ancestors of `child_nid`) but proved too narrow — parallel completed branches dropped out of scope after the first recovery cycle. Switched to session-wide completed nodes.
+**Recovery planner amnesia fix — critic failures** (Improvement)
+- On critic fail, recovery planner now receives `["USER_QUERY"] + prior_complete` as graph inputs (same mechanism as upstream failure path).
+- `prior_complete` excludes `target_nid` (the node whose output was rejected) so the planner cannot reuse bad output.
+- planner.md recovery section teaches the planner to wire prior results by `n:<id>` instead of re-running them.
 
 ---
 
-## prompts/planner.md — Recovery planner instructions
+## prompts/planner.md — Major rewrite
 
-**AVAILABLE_NODES and FAILED_NODE handling** (Improvement)
-- Added 3 instruction lines: if `AVAILABLE_NODES` appears in FAILURE block, reference those nodes via `n:<label>` instead of re-running them. If `FAILED_NODE` appears, do not use that node's output — find an alternative approach.
+**Browser skill added** (Feature)
+- Full documentation for the `browser` skill: when to prefer it over `researcher`, how to set `metadata.url` and `metadata.goal`, cascade behaviour.
 
----
+**Fan-out scoping instructions** (Improvement)
+- Explicit rules: fan-out workers must NOT list `USER_QUERY` in inputs; use `metadata.question` for sub-question scoping. Formatter SHOULD list `USER_QUERY`.
 
-## tests/test_recovery.py — Test suite updates
-
-**Counter signature update** (Maintenance)
-- Updated 3 critic-fail tests to pass `[0]` (list) instead of `{}` (dict) as the recovery counter argument, matching the new `handle_critic_verdict` signature.
-- Cap test updated: `{"n:t": 2}` → `[5]` (counter at MAX), `cap == ["n:t"]` → `cap == [True]`.
+**Recovery section rewritten** (Improvement)
+- New recovery instructions: when FAILURE is present and INPUTS contain `n:*` entries, those are prior successful results. Wire them by id, do not re-run. Includes worked example showing a 3-researcher run where 2 succeeded.
 
 ---
 
-## skills.py — Tool discovery & prompt rendering
+## skills.py — Prompt rendering & dispatch
 
-**Static tool catalog removed** (Improvement)
-- `_TOOL_CATALOG` dict and `tool_payload()` helper deleted (~45 lines).
-- Tool schemas are now fetched live from MCP via `mcp_runner.run_with_tools(tool_names=...)`.
+**`render_prompt` USER_QUERY scoping** (Improvement)
+- `USER_QUERY:` line only injected when `USER_QUERY` is actually in the resolved inputs, not unconditionally. Prevents fan-out workers from seeing the full multi-item query.
 
 **`question` injected into prompt** (Improvement)
-- `render_prompt` accepts new `question` kwarg.
-- `run_skill` reads `metadata.question` from the node and passes it into the rendered prompt as `QUESTION: ...`.
+- `run_skill` reads `metadata.question` from the node and passes it into the rendered prompt as a `QUESTION:` block — the per-worker sub-question for fan-out.
+
+**Browser skill dispatch** (Feature)
+- `run_skill` detects `skill.name == "browser"` and hands off to `BrowserSkill.run(NodeSpec)` directly, bypassing the LLM gateway chat channel.
+
+**Static tool catalog re-introduced** (Revert)
+- `_TOOL_CATALOG` dict and `tool_payload()` helper re-added. Live MCP schema discovery (from a prior iteration) was reverted; tool schemas are now built from the static catalog.
 
 ---
 
-## mcp_runner.py — Live schema discovery
+## mcp_runner.py
 
-**`tools_payload` → `tool_names`** (Improvement)
-- `run_with_tools` signature changed: takes `tool_names: list[str]` instead of pre-built `tools_payload: list[dict]`.
-- On startup, calls `mcp.list_tools()`, filters by `allowed = set(tool_names)`, builds payload dynamically.
-- Eliminates need for static catalog; schema always matches the running MCP server.
+**`tool_names` → `tools_payload`** (Revert)
+- `run_with_tools` signature reverted to accept `tools_payload: list[dict]` (pre-built schemas) instead of `tool_names: list[str]`. Pairs with skills.py static catalog reintroduction.
+
+---
+
+## browser/ — New module
+
+New 5-file browser module: `__init__.py`, `client.py`, `dom.py`, `driver.py`, `highlight.py`, `skill.py`.
+Four-layer cascade: extract → deterministic → a11y → vision. Registered as the `browser` skill.
+
+---
+
+## tests/ — New and updated test files
+
+**test_critic_autoinsert.py** (New)
+- 4 tests covering auto-insertion: pre-planned distiller→formatter edge gets critic spliced, existing critic children not re-gated, multi-edge fan-out each guarded, non-critic skills skipped.
+
+**test_recovery_amnesia.py** (New)
+- 3 tests covering `prior_complete` in critic-fail recovery: siblings carried, critics/planners excluded, empty prior_complete falls back to USER_QUERY only.
+
+**test_recovery.py** (Updated)
+- Critic-fail tests use `dict[str, bool]` for `recovered_branches` — matching current per-target bool cap in `handle_critic_verdict`.

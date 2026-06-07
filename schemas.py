@@ -109,6 +109,18 @@ class NodeSpec(BaseModel):
     metadata: dict = Field(default_factory=dict)
 
 
+# Session 9: structured failure taxonomy for the Browser skill. Other skills
+# leave error_code=None and fall through to recovery.classify_failure's text
+# heuristics. This field is additive and breaks no existing carriers.
+ErrorCode = Literal[
+    "gateway_blocked",       # CAPTCHA, login wall, geo-block, page never rendered
+    "extraction_failed",     # rendered but no useful content
+    "interaction_failed",    # could not complete the goal within turn cap
+    "timeout",               # wall-clock cap hit
+    "vlm_unavailable",       # all vision providers refused or 503'd
+]
+
+
 class AgentResult(BaseModel):
     """What every skill returns. The boundary between flow.py and a skill
     is exactly this model — orchestrator and skills never share dicts."""
@@ -122,6 +134,26 @@ class AgentResult(BaseModel):
     elapsed_s: float = 0.0
     provider: str = ""
     error: str | None = None
+    # Session 9: structured failure code for the Browser skill (other skills
+    # leave it None and fall through to recovery's text heuristics).
+    error_code: ErrorCode | None = None
+
+
+class BrowserOutput(BaseModel):
+    """Session 9: typed payload the Browser skill writes into AgentResult.output.
+
+    `path` is the cascade layer the skill actually used.  Downstream skills
+    consume `content` through the normal output pipe; only replay and the
+    Planner's failure routing care about `path`.
+    """
+
+    url: str
+    goal: str
+    path: Literal["extract", "deterministic", "a11y", "vision"]
+    turns: int = 0
+    content: str | None = None
+    actions: list[dict] = Field(default_factory=list)
+    final_url: str | None = None
 
 
 class NodeState(BaseModel):

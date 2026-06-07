@@ -22,7 +22,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-
 RecoveryReason = Literal["transient", "validation_error", "upstream_failure"]
 RecoveryAction = Literal["skip", "replan", "critic_fail"]
 
@@ -95,10 +94,7 @@ def plan_recovery(
     )
 
 
-MAX_CRITIC_RECOVERIES = 5  # global cap across all critic-fail cycles in a session
-
-
-def handle_critic_verdict(nid: str, result, graph, recovery_counter: list,
+def handle_critic_verdict(nid: str, result, graph, recovered_branches: dict,
                           cap_hit: list) -> bool:
     """Critic-fail policy (P1 #5). Returns True when the caller should skip
     the normal `extend_from` (because the Critic emitted `fail` and we
@@ -108,9 +104,6 @@ def handle_critic_verdict(nid: str, result, graph, recovery_counter: list,
     inserts one whenever a `critic:true` skill has outgoing edges) which
     carry `target` + `child` in metadata, and Planner-emitted Critics
     which do not — for the latter we derive both from graph structure.
-
-    `recovery_counter` is a single-element list [int] — a mutable int so the
-    global count persists across calls without a class.
     """
     output = result.output or {}
     if not output:
@@ -128,40 +121,39 @@ def handle_critic_verdict(nid: str, result, graph, recovery_counter: list,
     if not child_nid:
         succs = list(graph.g.successors(nid))
         child_nid = succs[0] if succs else None
+        # THIS IS A CRITICAL BUGFIX, WHICH SKIPS MULTIPLE SUCESSORS
         for s in succs[1:]:
             if s in graph.g.nodes:
                 graph.mark(s, "skipped")
     if child_nid and child_nid in graph.g.nodes:
         graph.mark(child_nid, "skipped")
-    if target_nid and recovery_counter[0] < MAX_CRITIC_RECOVERIES:
-        recovery_counter[0] += 1
+    if target_nid and not recovered_branches.get(target_nid):
+        recovered_branches[target_nid] = True
         rationale = (result.output or {}).get("rationale", "(no rationale)")
-
-        # Collect all completed nodes so the recovery planner has full session
-        # context and never re-runs work that already succeeded.
-        available = []
-        for anid, d in graph.g.nodes(data=True):
-            if (d.get("status") == "complete"
-                    and d.get("skill") not in ("critic", "planner")
-                    and anid != target_nid):
-                label = (d.get("metadata") or {}).get("label")
-                if label:
-                    available.append(f"{d['skill']}:{label}")
-        available.sort()
-        target_label = (graph.g.nodes[target_nid].get("metadata") or {}).get("label", target_nid)
-
         fr = f"critic failed target={target_nid} child={child_nid} rationale={rationale}"
-        if available:
-            fr += f"\nAVAILABLE_NODES (reuse via n:<label>, do NOT re-run): {', '.join(available)}"
-        fr += f"\nFAILED_NODE (do NOT reuse output): {target_label}"
-
-        rec_nid = graph.add_node("planner", inputs=["USER_QUERY"],
+        # Wire all already-completed nodes (except the rejected target) as
+        # inputs to the recovery planner. resolve_inputs will pull their
+        # outputs into the planner's INPUTS block so it can reference them
+        # by n:<id> instead of re-running the same work. planner.md recovery
+        # section teaches the planner to do this. Excluding target_nid
+        # prevents the planner from reusing the output the critic rejected.
+        prior_complete = [
+            n for n, d in graph.g.nodes(data=True)
+            if d.get("status") == "complete"
+            and d["skill"] not in ("planner", "critic")
+            and n != target_nid
+        ]
+        recovery_inputs = ["USER_QUERY"] + prior_complete
+        rec_nid = graph.add_node("planner", inputs=recovery_inputs,
                                  metadata={"failure_report": fr,
                                            "recovers": target_nid,
-                                           "recovery_reason": "critic_fail"})
-        print(f"  ↪ critic-fail recovery: planner node {rec_nid} for {target_nid}")
+                                           "recovery_reason": "critic_fail",
+                                           "prior_complete": prior_complete})
+        print(f"  ↪ critic-fail recovery: planner node {rec_nid} for {target_nid}"
+              + (f"; reusing {len(prior_complete)} prior result(s): "
+                 f"{', '.join(prior_complete)}" if prior_complete else ""))
     elif target_nid:
-        cap_hit.append(True)
-        print(f"  ↪ critic-fail on {target_nid} global recovery cap ({MAX_CRITIC_RECOVERIES}) hit — "
-              f"branch skipped, final will reflect missing data")
+        cap_hit.append(target_nid)
+        print(f"  ↪ critic-fail on {target_nid} already recovered once; "
+              f"CAP HIT — branch skipped, final will reflect missing data")
     return True

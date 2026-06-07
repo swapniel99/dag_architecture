@@ -1,15 +1,14 @@
-# Secrets — NEVER commit
-.env
-.env.local
+.idea/
 
-# Local runtime state — regenerated on each run
-state/sessions/*/
-!state/sessions/.gitkeep
-sandbox/*.txt
-.venv/
-gateway/.venv/
-gateway/*.db
-gateway/usage.json
+# secrets / env
+.env
+.env.*
+!.env.example
+
+# runtime state
+state/
+sandbox/
+usage.json
 
 # Build / cache artifacts
 **/__pycache__/
@@ -19,8 +18,10 @@ gateway/usage.json
 *.json
 *.faiss
 
-# Editors
-.vscode/
-.idea/
+# python
+*.py[cod]
+*.egg-info/
+.venv/
+
+# os
 .DS_Store
-_README.md
