@@ -60,9 +60,11 @@ Output (JSON, no markdown):
   "nodes": [
     {"skill": "<name>",
      "inputs": ["USER_QUERY" or "n:<label>" or "art:<id>"],
-     "metadata": {"label": "<short_id>", "question": "<optional hint>"}}
+     "metadata": {"label": "<short_id_like_r1_c1_out>", "question": "<optional hint>"}}
   ]
 }
+
+ALWAYS use short, lowercase alphanumeric IDs for labels (e.g., r1, c1, d1, out, rRetry). Do NOT use long descriptive words in label.
 
 Reference upstream nodes as "n:<label>" where label matches a
 sibling's metadata.label. The final node must be a formatter.
