@@ -62,7 +62,7 @@ Output (JSON, no markdown):
   "nodes": [
     {"skill": "<name>",
      "inputs": ["USER_QUERY" or "n:<label>" or "art:<id>"],
-     "metadata": {"label": "<short_id_like_r1_c1_out>", "question": "<optional hint>"}}
+     "metadata": {"label": "<short_id_like_r1_c1_out>", "question": "<requires goal or sub-question unless USER_QUERY is in inputs>"}}
   ]
 }
 
