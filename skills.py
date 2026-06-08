@@ -200,74 +200,6 @@ def parse_skill_json(text: str) -> dict:
     return {}
 
 
-# ── MCP tool schemas exposed through the gateway tools= channel ──────────────
-
-_TOOL_CATALOG = {
-    "web_search": {
-        "name": "web_search",
-        "description": "Search the web (Tavily primary, DDG fallback). Hard-capped at 5 results.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string"},
-                "max_results": {"type": "integer", "default": 3},
-            },
-            "required": ["query"],
-        },
-    },
-    "fetch_url": {
-        "name": "fetch_url",
-        "description": "Fetch clean markdown from a URL via crawl4ai.",
-        "input_schema": {
-            "type": "object",
-            "properties": {"url": {"type": "string"}},
-            "required": ["url"],
-        },
-    },
-    "search_knowledge": {
-        "name": "search_knowledge",
-        "description": "Vector search over the agent's indexed knowledge base.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string"},
-                "k": {"type": "integer", "default": 5},
-            },
-            "required": ["query"],
-        },
-    },
-    "list_dir": {
-        "name": "list_dir",
-        "description": "List a directory inside the sandbox.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "path": {"type": "string", "default": "."},
-            },
-        },
-    },
-    "index_document": {
-        "name": "index_document",
-        "description": "Chunk a sandbox file, directory, or artifact and write each chunk into Memory as a searchable fact.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "path": {"type": "string"},
-                "chunk_size": {"type": "integer", "default": 400},
-                "overlap": {"type": "integer", "default": 80},
-            },
-            "required": ["path"],
-        },
-    },
-}
-
-
-def tool_payload(tool_names: list[str]) -> list[dict] | None:
-    if not tool_names:
-        return None
-    return [_TOOL_CATALOG[n] for n in tool_names if n in _TOOL_CATALOG]
-
-
 # ── per-node execution ───────────────────────────────────────────────────────
 
 async def run_skill(skill: Skill, node_id: str, graph_nodes,
@@ -339,15 +271,14 @@ async def run_skill(skill: Skill, node_id: str, graph_nodes,
             result.elapsed_s = time.time() - started
         return result, rendered
 
-    tools = tool_payload(skill.tools_allowed)
-    if tools:
+    if skill.tools_allowed:
         # Multi-turn tool-use loop. mcp_runner opens one MCP stdio session
         # per skill invocation, dispatches each tool_call the model emits,
         # and feeds the results back until the model produces final text.
         from mcp_runner import run_with_tools
         reply = await run_with_tools(
             prompt=rendered,
-            tools_payload=tools,
+            allowed_names=skill.tools_allowed,
             agent=skill.name,
             session_id=session_id,
             provider_pin=skill.provider_pin,

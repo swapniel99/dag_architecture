@@ -51,7 +51,7 @@ async def _dispatch_tool(session: ClientSession, name: str, args: dict) -> str:
     return "\n".join(parts) if parts else ""
 
 
-async def run_with_tools(*, prompt: str, tools_payload: list[dict],
+async def run_with_tools(*, prompt: str, allowed_names: list[str],
                          agent: str, session_id: str,
                          provider_pin: str | None = None,
                          max_tokens: int = 2048,
@@ -67,6 +67,18 @@ async def run_with_tools(*, prompt: str, tools_payload: list[dict],
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as mcp:
             await mcp.initialize()
+            
+            # Fetch tools dynamically from MCP server and filter by allowed names
+            mcp_tools = await mcp.list_tools()
+            tools_payload = []
+            for t in mcp_tools.tools:
+                if t.name in allowed_names:
+                    tools_payload.append({
+                        "name": t.name,
+                        "description": t.description,
+                        "input_schema": t.inputSchema,
+                    })
+
             for _ in range(MAX_TOOL_HOPS + 1):
                 reply = await _chat(messages=messages, tools=tools_payload,
                                     agent=agent, session_id=session_id,
