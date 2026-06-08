@@ -84,3 +84,71 @@ Four-layer cascade: extract → deterministic → a11y → vision. Registered as
 
 **test_recovery.py** (Updated)
 - Critic-fail tests use `dict[str, bool]` for `recovered_branches` — matching current per-target bool cap in `handle_critic_verdict`.
+
+---
+
+# New Changes (vs e79bd433)
+
+## browser/dom.py
+
+**Increase DOM element name limit** (Feature)
+- Increased character limit for sliced element names under `_ENUMERATE_JS` from 80 to 200 to preserve more descriptive context.
+
+---
+
+## browser/driver.py
+
+**System Prompts Action Constraints & Critical Rules** (Feature / Improvement)
+- Reorganized `SYSTEM_PROMPT_VISION` and `SYSTEM_PROMPT_A11Y` to explicitly structure `AVAILABLE ACTIONS` and `CRITICAL RULES`.
+- Added critical rule to never bundle `done` with other actions in the same turn.
+- Added critical rule to never declare `done` with placeholder/incomplete values when concrete values are required to satisfy the goal.
+- Capped actions per turn to at most 2, preferring a single action for most turns.
+
+---
+
+## flow.py — Executor & Graph
+
+**Logging & Verbosity Improvements** (Improvement)
+- Added logging of target paths for `browser` skill nodes in the execution trace.
+- Removed truncation on the final printed answer, printing the full content instead of slicing to 600 characters.
+
+---
+
+## prompts/distiller.md
+
+**Metric Extraction and Sorting Guidelines** (Improvement)
+- Added explicit warnings to be extremely careful when extracting numeric metrics to avoid confusing different metrics.
+- Instructed distiller to verify sort, filter, and other settings against the data.
+
+---
+
+## prompts/indexer.md
+
+**Directory Indexing Support** (Feature)
+- Updated Indexer role to support indexing directories recursively in addition to single files.
+- Updated tool guidelines to explicitly state `index_document` natively supports directory paths.
+- Updated Output schema JSON to support multiple `indexed` paths and track `failed` paths.
+
+---
+
+## prompts/planner.md
+
+**Label Constraints and Skill Critic Notes** (Improvement)
+- Added instruction to always use short, lowercase alphanumeric IDs (e.g. r1, c1) for labels.
+- Added distillery critic notes warning not to manually emit a critic if the writing node is a distiller, and to wire formatter inputs correctly to the writing node.
+
+---
+
+## skills.py — Prompt rendering & dispatch
+
+**Dynamic Tool Payload Delegation** (Refactoring)
+- Removed the static hardcoded `_TOOL_CATALOG` and `tool_payload` helper function.
+- Updated `run_skill` node execution to pass the list of allowed tool names (`skill.tools_allowed`) to `run_with_tools`.
+
+---
+
+## mcp_runner.py
+
+**Dynamic MCP Tool Fetching** (Feature / Improvement)
+- Changed `run_with_tools` to take a list of `allowed_names` instead of a static `tools_payload`.
+- Queries the MCP server dynamically with `list_tools()` and filters them against `allowed_names`.
