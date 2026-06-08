@@ -295,6 +295,7 @@ class Executor:
                 print(f"{time.strftime('%H:%M:%S')} +{time.time()-session_start:6.1f}s [{nid:3s}] {graph.g.nodes[nid]['skill']:20s} "
                       f"{graph.g.nodes[nid]['status']:8s} "
                       f"({result.elapsed_s:.1f}s)"
+                      + (f"  path={out.get('path')}" if graph.g.nodes[nid]['skill'] == "browser" and out.get('path') else "")
                       + (f"  q={q[:80]}" if q and not verdict and not found else "")
                       + (f"  rationale={rationale[:80]}" if rationale and not q and not verdict else "")
                       + (f"  verdict={verdict}" if verdict else "")
