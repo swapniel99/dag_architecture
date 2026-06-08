@@ -98,9 +98,16 @@ class Graph:
         # Pass 2: resolve inputs now that every sibling has an id. Translate
         # `n:<label>` to `n:<assigned-id>` if the label matches; pass numeric
         # `n:<i>` references through; pass anything else through unchanged.
+        # NOTE: an empty `raw_inputs` is now a legitimate Planner signal for
+        # a fan-out worker scoped via `metadata.question` (see planner.md).
+        # We do NOT substitute the parent in that case — doing so would dump
+        # the parent's full output (which for the Planner contains every
+        # sibling's question) back into the worker's INPUTS block and undo
+        # the scoping. The structural parent edge is preserved separately
+        # below so the graph topology is still correct.
         for new_id, raw_inputs in pending:
             resolved: list[str] = []
-            for inp in raw_inputs or [src_nid]:
+            for inp in raw_inputs:
                 # `n:<label>` or `n:<int>` form (preferred).
                 if inp.startswith("n:"):
                     suffix = inp[2:]
@@ -122,25 +129,51 @@ class Graph:
                 if inp.startswith("art:"):
                     resolved.append(inp)
                     continue
-                # Unknown — fall back to the parent so the child has at
-                # least one upstream dependency to wait on.
+                # Unresolvable input — fall back to the parent so the child
+                # has at least one upstream dependency to wait on. This still
+                # leaks the parent's output into INPUTS, but only when the
+                # Planner emitted a bad input name; it is not the fan-out
+                # path. A future round may want to fail loudly here instead.
                 resolved.append(src_nid)
             self.g.nodes[new_id]["inputs"] = resolved
             for inp in resolved:
                 if inp.startswith("n:") and inp in self.g.nodes:
                     self.g.add_edge(inp, new_id)
+            # Fan-out worker case: planner emitted inputs=[] on purpose. No
+            # data dependency, but we still record the structural parent
+            # edge so the executor's `ready_nodes` ordering and replay
+            # topology stay coherent.
+            if not raw_inputs:
+                self.g.add_edge(src_nid, new_id)
 
         for child_skill in src_def.internal_successors:
             nid = self.add_node(child_skill, inputs=[src_nid])
             added.append(nid)
 
-        # Critic auto-insertion: place a Critic before each newly-added
-        # child so the child only runs after Critic passes.
-        if src_def.critic and added:
-            for child_nid in list(added):
+        # Critic auto-insertion: when a `critic: true` skill completes,
+        # gate every outgoing edge (to a non-critic child) with a Critic
+        # node. Covers BOTH newly-added dynamic successors AND pre-existing
+        # edges from the initial Planner plan — earlier versions only saw
+        # `added`, so a pre-planned distiller → formatter chain bypassed
+        # the auto-critic entirely (the `critic: true` flag became a no-op
+        # in the common pre-planned case). Reading the graph's actual
+        # outgoing edges makes the flag load-bearing in both shapes.
+        if src_def.critic:
+            child_targets: list[str] = []
+            for child_nid in list(self.g.successors(src_nid)):
+                if self.g.nodes[child_nid].get("skill") == "critic":
+                    continue  # already gated
+                child_targets.append(child_nid)
+            for child_nid in child_targets:
                 self.g.remove_edge(src_nid, child_nid)
+                # Critics need USER_QUERY: without it the critic falls back
+                # to MEMORY HITS for context (and stale hits from prior
+                # sessions can fool the critic into believing the user
+                # asked a completely different question). With USER_QUERY
+                # the critic evaluates against the real ask and not against
+                # whatever happens to be top-of-FAISS.
                 critic_nid = self.add_node(
-                    "critic", inputs=[src_nid],
+                    "critic", inputs=["USER_QUERY", src_nid],
                     metadata={"target": src_nid, "child": child_nid},
                 )
                 self.g.add_edge(critic_nid, child_nid)
@@ -259,14 +292,33 @@ class Executor:
                               f"skill={failed_skill}): {decision.note}")
                         continue
                     # action == "replan"
+                    # Recovery Planner amnesia fix: pass the ids of nodes that
+                    # have already completed successfully so the recovery
+                    # Planner can wire them by id in its successor plan
+                    # instead of re-emitting fresh fan-out siblings that
+                    # duplicate work already done. Excludes planner nodes
+                    # (routing context, not data) and critic nodes (verdicts,
+                    # not data); their outputs are not useful upstream input
+                    # for a recovery plan. planner.md teaches the recovery
+                    # Planner what to do with these n:* refs.
+                    prior_complete = [
+                        n for n, d in graph.g.nodes(data=True)
+                        if d.get("status") == "complete"
+                        and d["skill"] not in ("planner", "critic")
+                        and isinstance(d.get("result"), AgentResult)
+                    ]
+                    recovery_inputs = ["USER_QUERY"] + prior_complete
                     rec_nid = graph.add_node(
-                        "planner", inputs=["USER_QUERY"],
+                        "planner", inputs=recovery_inputs,
                         metadata={"failure_report": decision.failure_report,
                                   "recovers": nid,
-                                  "recovery_reason": decision.reason},
+                                  "recovery_reason": decision.reason,
+                                  "prior_complete": prior_complete},
                     )
                     print(f"  ↪ recovery ({decision.reason}): planner node "
-                          f"{rec_nid} queued for {nid}")
+                          f"{rec_nid} queued for {nid}"
+                          + (f"; reusing {len(prior_complete)} prior result(s): "
+                             f"{', '.join(prior_complete)}" if prior_complete else ""))
 
             store.write_graph(graph.g)
 

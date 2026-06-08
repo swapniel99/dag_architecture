@@ -1,13 +1,5 @@
-STUB — STUDENT ASSIGNMENT.
-
-You implement this prompt. The skill catalogue (agent_config.yaml)
-already wires Coder → SandboxExecutor as a static internal successor,
-so once your Coder emits valid Python, the orchestrator hands it to
-the sandbox runner automatically.
-
-Required output (JSON, no markdown fences):
-
-  {"code": "<python source>", "rationale": "<one short line>"}
-
-Read ASSIGNMENT.md at the package root for the full spec, the
-acceptance tests, and what to demonstrate.
+STUB. Session 8 student assignment. Replace this prompt with one that
+takes an input task and emits Python code in JSON shape:
+`{"code": "<python>", "rationale": "<one line>"}`. The orchestrator
+will hand the code to `sandbox_executor` next (declared as a static
+internal successor in agent_config.yaml).
