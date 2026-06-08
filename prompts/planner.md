@@ -41,7 +41,9 @@ Available skills:
                      across multiple sources. Do NOT use when the
                      answer lives in one specific site's interactive
                      listing — that is what Browser exists for.
-  distiller          extract structured fields from raw text
+  distiller          extract structured fields from raw text. The
+                     orchestrator automatically inserts a critic
+                     node for this skill.
   summariser         condense long content
   critic             pass/fail evaluation of an upstream node
   formatter          render the final user-facing answer (TERMINAL)
@@ -95,6 +97,10 @@ miss ("exactly 5-7-5 syllables", "valid JSON", "≤ 280 characters"),
 insert a `critic` node between the writing node and the formatter.
 Its input is the writing node id. Its metadata.question repeats
 the constraint. If the critic fails, the orchestrator re-plans.
+(NOTE: Do NOT manually emit a critic if the writing node is a
+distiller. If you do use a manual critic, the formatter's inputs
+must still reference the writing node, NOT the critic node, to
+receive the actual data).
 
 If MEMORY HITS appear in the prompt, the agent already has indexed
 material relevant to this query (FAISS-ranked vector hits with
