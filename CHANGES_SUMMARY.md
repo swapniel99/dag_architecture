@@ -65,16 +65,6 @@
 **Browser skill dispatch** (Feature)
 - `run_skill` detects `skill.name == "browser"` and hands off to `BrowserSkill.run(NodeSpec)` directly, bypassing the LLM gateway chat channel.
 
-**Static tool catalog re-introduced** (Revert)
-- `_TOOL_CATALOG` dict and `tool_payload()` helper re-added. Live MCP schema discovery (from a prior iteration) was reverted; tool schemas are now built from the static catalog.
-
----
-
-## mcp_runner.py
-
-**`tool_names` → `tools_payload`** (Revert)
-- `run_with_tools` signature reverted to accept `tools_payload: list[dict]` (pre-built schemas) instead of `tool_names: list[str]`. Pairs with skills.py static catalog reintroduction.
-
 ---
 
 ## browser/ — New module
