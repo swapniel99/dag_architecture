@@ -236,6 +236,29 @@ _TOOL_CATALOG = {
             "required": ["query"],
         },
     },
+    "list_dir": {
+        "name": "list_dir",
+        "description": "List a directory inside the sandbox.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "default": "."},
+            },
+        },
+    },
+    "index_document": {
+        "name": "index_document",
+        "description": "Chunk a sandbox file, directory, or artifact and write each chunk into Memory as a searchable fact.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "chunk_size": {"type": "integer", "default": 400},
+                "overlap": {"type": "integer", "default": 80},
+            },
+            "required": ["path"],
+        },
+    },
 }
 
 
