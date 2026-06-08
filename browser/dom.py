@@ -111,7 +111,7 @@ _ENUMERATE_JS = r"""
       const inner = el.querySelector('[aria-label], [title]');
       if (inner) name = inner.getAttribute('aria-label') || inner.getAttribute('title') || '';
     }
-    name = name.trim().replace(/\s+/g, ' ').slice(0, 80);
+    name = name.trim().replace(/\s+/g, ' ').slice(0, 200);
     out.push({
       id: ++id,
       tag: el.tagName.toLowerCase(),
