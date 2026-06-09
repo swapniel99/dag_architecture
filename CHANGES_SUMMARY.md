@@ -152,3 +152,26 @@ Four-layer cascade: extract → deterministic → a11y → vision. Registered as
 **Dynamic MCP Tool Fetching** (Feature / Improvement)
 - Changed `run_with_tools` to take a list of `allowed_names` instead of a static `tools_payload`.
 - Queries the MCP server dynamically with `list_tools()` and filters them against `allowed_names`.
+
+---
+
+## browser/driver.py
+
+**OS-aware select-all keyboard shortcut** (Bugfix)
+- Changed input `clear` sequence to detect system platform (`sys.platform`). Uses `Meta+A` on macOS (Darwin) and `Control+A` on Windows/Linux. This avoids cursor-jumping issues that previously broke text clearing on Mac.
+
+---
+
+## browser/skill.py
+
+**Resilient Page Navigation & Interaction Cascade** (Bugfix / Improvement)
+- Changed `page.goto` to use `wait_until="load"` instead of `"domcontentloaded"`. This ensures client-side redirects finish loading before the driver runs, preventing context-destruction crashes.
+- Added `search`, `set`, and `enter` to `interactive_verbs` in `_is_useful_extract` to prevent the browser skill from short-circuiting on raw HTML extraction when the goal requires input interactions.
+
+---
+
+## browser/dom.py
+
+**Context-destruction recovery in DOM enumeration** (Bugfix)
+- Wrapped `enumerate_interactives` in a retry loop (up to 3 attempts with linear backoff) when catching `"Execution context was destroyed"` errors during `page.evaluate`.
+
