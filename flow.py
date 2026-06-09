@@ -178,25 +178,29 @@ class Graph:
         # in the common pre-planned case). Reading the graph's actual
         # outgoing edges makes the flag load-bearing in both shapes.
         if src_def.critic:
-            child_targets: list[str] = []
-            for child_nid in list(self.g.successors(src_nid)):
-                if self.g.nodes[child_nid].get("skill") == "critic":
-                    continue  # already gated
-                child_targets.append(child_nid)
-            for child_nid in child_targets:
-                self.g.remove_edge(src_nid, child_nid)
-                # Critics need USER_QUERY: without it the critic falls back
-                # to MEMORY HITS for context (and stale hits from prior
-                # sessions can fool the critic into believing the user
-                # asked a completely different question). With USER_QUERY
-                # the critic evaluates against the real ask and not against
-                # whatever happens to be top-of-FAISS.
-                critic_nid = self.add_node(
-                    "critic", inputs=["USER_QUERY", src_nid],
-                    metadata={"target": src_nid, "child": child_nid},
-                )
-                self.g.add_edge(critic_nid, child_nid)
-                added.append(critic_nid)
+            # Check if planner has already attached a critic node for this source
+            has_critic = any(
+                self.g.nodes[child_nid].get("skill") == "critic"
+                for child_nid in self.g.successors(src_nid)
+            )
+            if not has_critic:
+                child_targets: list[str] = []
+                for child_nid in list(self.g.successors(src_nid)):
+                    child_targets.append(child_nid)
+                for child_nid in child_targets:
+                    self.g.remove_edge(src_nid, child_nid)
+                    # Critics need USER_QUERY: without it the critic falls back
+                    # to MEMORY HITS for context (and stale hits from prior
+                    # sessions can fool the critic into believing the user
+                    # asked a completely different question). With USER_QUERY
+                    # the critic evaluates against the real ask and not against
+                    # whatever happens to be top-of-FAISS.
+                    critic_nid = self.add_node(
+                        "critic", inputs=["USER_QUERY", src_nid],
+                        metadata={"target": src_nid, "child": child_nid},
+                    )
+                    self.g.add_edge(critic_nid, child_nid)
+                    added.append(critic_nid)
 
         return added
 

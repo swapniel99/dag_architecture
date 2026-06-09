@@ -112,6 +112,10 @@ Four-layer cascade: extract → deterministic → a11y → vision. Registered as
 - Added logging of target paths for `browser` skill nodes in the execution trace.
 - Removed truncation on the final printed answer, printing the full content instead of slicing to 600 characters.
 
+**Avoid Duplicate Critic Auto-insertion** (Improvement)
+- Check if a critic node is already a successor of the node before auto-attaching a new critic. If the planner has manually attached a critic, the auto-critic insertion is skipped.
+
+
 ---
 
 ## prompts/distiller.md
@@ -133,9 +137,8 @@ Four-layer cascade: extract → deterministic → a11y → vision. Registered as
 
 ## prompts/planner.md
 
-**Label Constraints and Skill Critic Notes** (Improvement)
+**Label Constraints** (Improvement)
 - Added instruction to always use short, lowercase alphanumeric IDs (e.g. r1, c1) for labels.
-- Added distillery critic notes warning not to manually emit a critic if the writing node is a distiller, and to wire formatter inputs correctly to the writing node.
 
 ---
 
@@ -174,4 +177,3 @@ Four-layer cascade: extract → deterministic → a11y → vision. Registered as
 
 **Context-destruction recovery in DOM enumeration** (Bugfix)
 - Wrapped `enumerate_interactives` in a retry loop (up to 3 attempts with linear backoff) when catching `"Execution context was destroyed"` errors during `page.evaluate`.
-

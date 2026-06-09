@@ -136,3 +136,27 @@ def test_non_critic_skill_does_not_trigger_auto_insertion():
         "researcher → distiller edge should be untouched"
     critics = [n for n, d in g.g.nodes(data=True) if d["skill"] == "critic"]
     assert critics == [], f"unexpected critic auto-insertion: {critics}"
+
+
+def test_critic_skipped_when_any_child_is_already_a_critic_even_with_direct_child():
+    """If the Planner emitted a Critic and also wired the distiller directly to
+    the formatter, we skip auto-insertion entirely because the Critic is already
+    attached in the graph for that distiller."""
+    registry = SkillRegistry()
+    g = Graph()
+    distiller = g.add_node("distiller", inputs=["USER_QUERY"])
+    user_critic = g.add_node("critic", inputs=[distiller],
+                             metadata={"target": distiller, "child": "<tbd>"})
+    # Formatter has inputs from both distiller and user_critic.
+    formatter = g.add_node("formatter", inputs=[distiller, user_critic])
+
+    pre = sum(1 for _, d in g.g.nodes(data=True) if d["skill"] == "critic")
+    g.extend_from(distiller, _ok_result("distiller"), registry=registry)
+    post = sum(1 for _, d in g.g.nodes(data=True) if d["skill"] == "critic")
+    assert post == pre, \
+        f"auto-insertion ran when a critic was already attached; before={pre} after={post}"
+    # Original edges remain intact.
+    assert g.g.has_edge(distiller, user_critic)
+    assert g.g.has_edge(distiller, formatter)
+    assert g.g.has_edge(user_critic, formatter)
+
