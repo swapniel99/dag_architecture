@@ -112,7 +112,8 @@ def _is_useful_extract(content: str, goal: str) -> bool:
     if len(content) < 200:
         return False
     interactive_verbs = ("click", "fill", "select", "type", "drag",
-                         "filter", "sort", "submit", "navigate")
+                         "filter", "sort", "submit", "navigate",
+                         "search", "set", "enter")
     if any(v in goal.lower() for v in interactive_verbs):
         return False
     return True
@@ -270,7 +271,7 @@ class BrowserSkill:
             )
             page = await ctx.new_page()
             try:
-                await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+                await page.goto(url, wait_until="load", timeout=45000)
                 # Last-chance gateway-block check on the rendered page (some
                 # walls only show up after JS executes).
                 kind = detect_gateway_block(await page.content())
@@ -318,7 +319,7 @@ class BrowserSkill:
             )
             page = await ctx.new_page()
             try:
-                await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+                await page.goto(url, wait_until="load", timeout=45000)
                 for i, step in enumerate(selectors, start=1):
                     sel = step.get("selector")
                     if not sel:

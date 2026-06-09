@@ -187,7 +187,9 @@ async def _dispatch(action: dict, page: Page, snap: PageSnapshot) -> str:
             return f"error: no element with mark {action.get('mark')!r}"
         await page.mouse.click(el.cx, el.cy)
         if action.get("clear", True):
-            await page.keyboard.press("Control+A")
+            import sys
+            shortcut = "Meta+A" if sys.platform == "darwin" else "Control+A"
+            await page.keyboard.press(shortcut)
             await page.keyboard.press("Delete")
         await page.keyboard.type(str(action.get("value", "")))
         return "ok"

@@ -177,11 +177,19 @@ class PageSnapshot:
 
 
 async def enumerate_interactives(page: Page) -> PageSnapshot:
-    raw = await page.evaluate(_ENUMERATE_JS)
-    els = [Element(**e) for e in raw["elements"]]
-    return PageSnapshot(
-        elements=els,
-        dpr=float(raw["dpr"]),
-        viewport_w=int(raw["viewport"]["w"]),
-        viewport_h=int(raw["viewport"]["h"]),
-    )
+    import asyncio
+    for attempt in range(3):
+        try:
+            raw = await page.evaluate(_ENUMERATE_JS)
+            els = [Element(**e) for e in raw["elements"]]
+            return PageSnapshot(
+                elements=els,
+                dpr=float(raw["dpr"]),
+                viewport_w=int(raw["viewport"]["w"]),
+                viewport_h=int(raw["viewport"]["h"]),
+            )
+        except Exception as e:
+            if "Execution context was destroyed" in str(e) and attempt < 2:
+                await asyncio.sleep(1.0 * (attempt + 1))
+                continue
+            raise
