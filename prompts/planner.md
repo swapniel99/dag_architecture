@@ -53,6 +53,10 @@ the user wants structured fields per item (a list of model_name +
 param_count + description, a table of price + bed_count, etc.).
 Browser returns raw page text; Distiller turns that text into the
 structured records the Formatter can render cleanly.
+When setting `metadata.question` for a `distiller` node, explicitly
+list all fields to extract AND all relevant qualifiers and constraints
+so it filters the right data correctly.
+
 
 Output (JSON, no markdown):
 {
@@ -82,6 +86,10 @@ Scoping a worker — IMPORTANT:
     (not `metadata.question`). The goal already names the sub-task
     for that one page, so do NOT also list USER_QUERY on a browser
     node — same fan-out leak otherwise.
+  - When setting `metadata.question` or `metadata.goal` for any
+    scoped worker node, always explicitly propagate all relevant
+    constraints, filters and other qualifiers, so that worker can
+    produce relevant results.
 
 When the user asks to compare or process N concrete items
 ("compare A, B, C" / "top 3 results"), emit one node per item so

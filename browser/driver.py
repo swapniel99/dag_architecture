@@ -255,6 +255,14 @@ class BaseDriver:
         raise NotImplementedError
 
     async def step(self, turn: int) -> tuple[bool, bool, str]:
+        # Wait for page load state to settle (useful after page navigations or clicks)
+        try:
+            await self.page.wait_for_load_state("domcontentloaded", timeout=5000)
+        except Exception:
+            pass
+        # Tiny sleep to let client-side JS and layout settle
+        await asyncio.sleep(1.0)
+
         snap = await enumerate_interactives(self.page)
         parsed, result = await self._decide(snap, turn)
 

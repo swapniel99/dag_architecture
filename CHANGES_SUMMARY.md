@@ -168,7 +168,6 @@ Four-layer cascade: extract → deterministic → a11y → vision. Registered as
 ## browser/skill.py
 
 **Resilient Page Navigation & Interaction Cascade** (Bugfix / Improvement)
-- Changed `page.goto` to use `wait_until="load"` instead of `"domcontentloaded"`. This ensures client-side redirects finish loading before the driver runs, preventing context-destruction crashes.
 - Added `search`, `set`, and `enter` to `interactive_verbs` in `_is_useful_extract` to prevent the browser skill from short-circuiting on raw HTML extraction when the goal requires input interactions.
 
 ---
@@ -177,3 +176,20 @@ Four-layer cascade: extract → deterministic → a11y → vision. Registered as
 
 **Context-destruction recovery in DOM enumeration** (Bugfix)
 - Wrapped `enumerate_interactives` in a retry loop (up to 3 attempts with linear backoff) when catching `"Execution context was destroyed"` errors during `page.evaluate`.
+
+---
+
+## New Changes (vs commit 4ae18fe)
+
+### prompts/planner.md
+
+**Explicit Constraint Propagation in Scoped Workers** (Improvement)
+- Added scoping guidelines in `Scoping a worker — IMPORTANT` requiring that `metadata.question` or `metadata.goal` explicitly carries over all qualifiers and constraints (like weights, purity, filters) from the original user query.
+- Added explicit distiller instruction to list all required fields and filters in `metadata.question` on the first plan to avoid vague extraction targets.
+
+---
+
+### browser/driver.py
+
+**Turn-by-turn Page Settling** (Improvement)
+- Added `page.wait_for_load_state("domcontentloaded")` and a `1.0` second sleep at the start of `step()` before `enumerate_interactives`. This ensures client-side hydration and animations settle after actions (clicks, types) before capturing snapshots.
