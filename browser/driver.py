@@ -90,6 +90,13 @@ SYSTEM_PROMPT_VISION = (
     "  - Never declare `done` with placeholder, incomplete, or indirect values "
     "    if concrete values are required to satisfy the goal. You must click "
     "    through to detail pages or explore further to obtain the actual concrete data.\n"
+    "  - After clicking a filter or submitting a search, observe the NEXT turn "
+    "    to confirm the filter is active (URL params changed, badge appeared, "
+    "    result count updated) before moving to the next step.\n"
+    "  - If the goal requires N items (e.g. '3 listings', 'top 5 results'), "
+    "    count the visible results before declaring done. If fewer than N are "
+    "    visible, scroll down or refine the search before calling done.\n"
+    "  - Use `note` (not `value`) to record what you extracted in done actions.\n"
     "  - At most 2 actions per turn. Most turns should be ONE action.\n"
     "  - Return MULTIPLE actions in a turn only when their effect is obvious; "
     "    otherwise emit one action and let the next screenshot inform the next step.\n"
@@ -120,6 +127,13 @@ SYSTEM_PROMPT_A11Y = (
     "  - Never declare `done` with placeholder, incomplete, or indirect values "
     "    if concrete values are required to satisfy the goal. You must click "
     "    through to detail pages or explore further to obtain the actual concrete data.\n"
+    "  - After clicking a filter or submitting a search, observe the NEXT turn "
+    "    to confirm the filter is active (URL params changed, badge appeared, "
+    "    result count updated) before moving to the next step.\n"
+    "  - If the goal requires N items (e.g. '3 listings', 'top 5 results'), "
+    "    count the visible results before declaring done. If fewer than N are "
+    "    visible, scroll down or refine the search before calling done.\n"
+    "  - Use `note` (not `value`) to record what you extracted in done actions.\n"
     "  - Element names like `Sort: Trending`, `Beds & Baths`, or anything "
     "    ending with `▾` or `:` are DROPDOWN TRIGGERS. When you click one, "
     "    it must be the SINGLE action that turn — the popup options only "
@@ -282,7 +296,7 @@ class BaseDriver:
             if a.get("type") == "done":
                 done_seen = True
                 success_seen = bool(a.get("success", False))
-                done_note = a.get("note", "")
+                done_note = a.get("note", "") or a.get("value", "")
                 outcomes.append(f"done({success_seen})")
                 break
             try:
@@ -306,6 +320,8 @@ class BaseDriver:
 
     async def run(self) -> DriverResult:
         failures = 0
+        # Track last N action fingerprints to detect spinning loops.
+        recent_actions: list[str] = []
         for turn in range(1, self.config.max_steps + 1):
             done, success, note = await self.step(turn)
             last = self.steps[-1]
@@ -318,6 +334,15 @@ class BaseDriver:
                 failures = 0
             if done:
                 return DriverResult(success, note, steps=self.steps)
+            # Repetition guard: if the last 3 turns all took identical actions,
+            # the driver is stuck in a loop (e.g. repeatedly typing the same
+            # search term). Bail out rather than burning all remaining turns.
+            fingerprint = str(last.actions)
+            recent_actions.append(fingerprint)
+            if len(recent_actions) >= 3 and len(set(recent_actions[-3:])) == 1:
+                return DriverResult(False,
+                                    f"stuck in action loop at turn {turn}: {fingerprint[:80]}",
+                                    steps=self.steps)
         return DriverResult(False, f"step cap reached ({self.config.max_steps})",
                             steps=self.steps)
 

@@ -362,10 +362,22 @@ class BrowserSkill:
 
     def _pack_driver(self, path, url, goal, drv_result,
                      *, final_url, elapsed) -> AgentResult:
+        extracted = getattr(drv_result, "extracted", None) or ""
+        note = drv_result.note or ""
+        # Prepend the driver's done-note so downstream skills see the LLM's
+        # own extraction summary alongside the raw page text. When the LLM
+        # found fewer results than the page contains (e.g. after filtering),
+        # the note is the ground truth for what was actually visible.
+        if note and extracted:
+            content = f"[driver extracted: {note}]\n\n{extracted}"
+        elif note:
+            content = note
+        else:
+            content = extracted or None
         out = BrowserOutput(
             url=url, goal=goal, path=path,
             turns=getattr(drv_result, "turns", 0) or 0,
-            content=getattr(drv_result, "extracted", None) or None,
+            content=content,
             actions=getattr(drv_result, "actions", []) or [],
             final_url=final_url,
         )

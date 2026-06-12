@@ -34,8 +34,6 @@ uv run python replay.py <session_id>
 uv run python flow.py --resume <session_id>
 ```
 
-Pytest markers: `network` (needs internet), `embed` (needs gateway V8 embedding endpoint). Skip them with `-m "not network and not embed"`.
-
 ## Architecture
 
 This is a **growing-graph multi-agent orchestrator**. The agent loop is a `networkx.DiGraph` where each node is a typed skill and edges carry `AgentResult` payloads. Ready nodes execute in parallel via `asyncio.gather`. Hard cap: `MAX_NODES = 60` (flow.py).
@@ -86,7 +84,7 @@ Per-skill `temperature` and `max_tokens` are tuned in `agent_config.yaml` — no
 | `coder` | — | Emits `{"code": "...", "rationale": "..."}` |
 | `sandbox_executor` | — | Runs coder output; auto-chained via `internal_successors` |
 | `indexer` | `list_dir`, `read_file`, `index_document` | Populates FAISS index |
-| `browser` | — | STUB — reserved for Session 9 |
+| `browser` | — | Layer cascade: trafilatura → A11yDriver → SetOfMarksDriver (vision); lives in `browser/` |
 
 ### Coder skill (student assignment)
 
