@@ -193,3 +193,13 @@ Four-layer cascade: extract → deterministic → a11y → vision. Registered as
 
 **Turn-by-turn Page Settling** (Improvement)
 - Added `page.wait_for_load_state("domcontentloaded")` and a `1.0` second sleep at the start of `step()` before `enumerate_interactives`. This ensures client-side hydration and animations settle after actions (clicks, types) before capturing snapshots.
+
+---
+
+## New Changes (vs commit 5c2d7f8)
+
+### flow.py — Executor & Graph
+
+**Propagate Target Question to Auto-critic** (Improvement)
+- Auto-inserted critic nodes now inherit the target node's scoped sub-question (if present).
+- The sub-question is formatted as a validation instruction: `"Verify that the output correctly answers the target question: '<question>'"` and set as the critic's `metadata.question` so the critic evaluates against the correct scope instead of the global `USER_QUERY`.

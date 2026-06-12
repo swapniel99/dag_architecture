@@ -195,9 +195,14 @@ class Graph:
                     # asked a completely different question). With USER_QUERY
                     # the critic evaluates against the real ask and not against
                     # whatever happens to be top-of-FAISS.
+                    critic_metadata = {"target": src_nid, "child": child_nid}
+                    target_question = self.g.nodes[src_nid].get("metadata", {}).get("question")
+                    if target_question:
+                        critic_metadata["question"] = f"Verify that the upstream output correctly answers the target question: '{target_question}'"
+
                     critic_nid = self.add_node(
                         "critic", inputs=["USER_QUERY", src_nid],
-                        metadata={"target": src_nid, "child": child_nid},
+                        metadata=critic_metadata,
                     )
                     self.g.add_edge(critic_nid, child_nid)
                     added.append(critic_nid)
