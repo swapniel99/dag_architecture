@@ -51,15 +51,15 @@ async def _dispatch_tool(session: ClientSession, name: str, args: dict) -> str:
     return "\n".join(parts) if parts else ""
 
 
-async def run_with_tools(*, prompt: str, tool_names: list[str],
+async def run_with_tools(*, prompt: str, allowed_names: list[str],
                          agent: str, session_id: str,
                          provider_pin: str | None = None,
                          max_tokens: int = 2048,
                          temperature: float = 0.3) -> dict:
     """Multi-turn chat: dispatch tool_calls via MCP, keep going until the
-    model returns text. Tool schemas are fetched live from the MCP server
-    via list_tools() and filtered to tool_names — no static catalog needed.
-    Returns the FINAL gateway reply dict."""
+    model returns text. Returns the FINAL gateway reply dict (so callers
+    can read `text`, `provider`, etc. the same way they would for a
+    one-shot call)."""
     messages: list[dict] = [{"role": "user", "content": prompt}]
     last_reply: dict = {}
 
@@ -67,14 +67,18 @@ async def run_with_tools(*, prompt: str, tool_names: list[str],
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as mcp:
             await mcp.initialize()
-            listed = await mcp.list_tools()
-            allowed = set(tool_names)
-            tools_payload = [
-                {"name": t.name, "description": t.description or "",
-                 "input_schema": t.inputSchema}
-                for t in (listed.tools or [])
-                if t.name in allowed
-            ]
+            
+            # Fetch tools dynamically from MCP server and filter by allowed names
+            mcp_tools = await mcp.list_tools()
+            tools_payload = []
+            for t in mcp_tools.tools:
+                if t.name in allowed_names:
+                    tools_payload.append({
+                        "name": t.name,
+                        "description": t.description,
+                        "input_schema": t.inputSchema,
+                    })
+
             for _ in range(MAX_TOOL_HOPS + 1):
                 reply = await _chat(messages=messages, tools=tools_payload,
                                     agent=agent, session_id=session_id,

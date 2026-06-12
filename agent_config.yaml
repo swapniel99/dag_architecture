@@ -93,6 +93,16 @@ indexer:
 
 browser:
   prompt: prompts/browser.md
-  temperature: 0.3
-  max_tokens: 1500
-  description: STUB. Reserved for Session 9.
+  # The Browser skill does not go through the standard LLM-call dispatch.
+  # It owns its own cascade (HTML extract → a11y text → vision SoM) and
+  # routes each layer's gateway call internally. temperature / max_tokens
+  # are kept here for registry uniformity but the dispatcher ignores them.
+  temperature: 0.0
+  max_tokens: 1024
+  description: |
+    Fetches and interacts with web pages through a four-layer cascade
+    (extract, deterministic, a11y, vision). Inputs in metadata: url
+    (required) and goal (required). Returns BrowserOutput with the
+    chosen layer surfaced as output.path. Use when Researcher's
+    fetch_url is insufficient: JavaScript-rendered content, interactive
+    widgets, multi-page workflows.

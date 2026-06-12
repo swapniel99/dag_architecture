@@ -26,6 +26,11 @@ Notes:
     emit a `comparison` key with `winner: <id>` and `reason: <short>`.
   - When the question's evidence is missing, set `fields: {}` and put
     the gap in `rationale`. Do not invent.
+  - Be extremely careful when extracting numeric metrics. Check the
+    surrounding labels or units to make sure you do not confuse
+    different metrics.
+  - Check for indicated sort, filter or any other settings and
+    correlate with the data.
 
 A Critic node may run after you. Its evaluation will fail if you
 invented fields or made claims unsupported by the inputs.

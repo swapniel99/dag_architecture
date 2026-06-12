@@ -98,9 +98,16 @@ class Graph:
         # Pass 2: resolve inputs now that every sibling has an id. Translate
         # `n:<label>` to `n:<assigned-id>` if the label matches; pass numeric
         # `n:<i>` references through; pass anything else through unchanged.
+        # NOTE: an empty `raw_inputs` is now a legitimate Planner signal for
+        # a fan-out worker scoped via `metadata.question` (see planner.md).
+        # We do NOT substitute the parent in that case — doing so would dump
+        # the parent's full output (which for the Planner contains every
+        # sibling's question) back into the worker's INPUTS block and undo
+        # the scoping. The structural parent edge is preserved separately
+        # below so the graph topology is still correct.
         for new_id, raw_inputs in pending:
             resolved: list[str] = []
-            for inp in raw_inputs or [src_nid]:
+            for inp in raw_inputs:
                 # `n:<label>` or `n:<int>` form (preferred).
                 if inp.startswith("n:"):
                     suffix = inp[2:]
@@ -122,13 +129,28 @@ class Graph:
                 if inp.startswith("art:"):
                     resolved.append(inp)
                     continue
-                # Unknown — fall back to the parent so the child has at
-                # least one upstream dependency to wait on.
+                # Unresolvable input — fall back to the parent so the child
+                # has at least one upstream dependency to wait on. This still
+                # leaks the parent's output into INPUTS, but only when the
+                # Planner emitted a bad input name; it is not the fan-out
+                # path. A future round may want to fail loudly here instead.
                 resolved.append(src_nid)
+            # Critic nodes must always have USER_QUERY so they can verify
+            # constraints from the original ask (budget, count, etc.). The
+            # auto-insertion path (extend_from critic block) always adds it,
+            # but planner-emitted critics in recovery plans often omit it.
+            if self.g.nodes[new_id].get("skill") == "critic" and "USER_QUERY" not in resolved:
+                resolved.insert(0, "USER_QUERY")
             self.g.nodes[new_id]["inputs"] = resolved
             for inp in resolved:
                 if inp.startswith("n:") and inp in self.g.nodes:
                     self.g.add_edge(inp, new_id)
+            # Fan-out worker case: planner emitted inputs=[] on purpose. No
+            # data dependency, but we still record the structural parent
+            # edge so the executor's `ready_nodes` ordering and replay
+            # topology stay coherent.
+            if not raw_inputs:
+                self.g.add_edge(src_nid, new_id)
 
         last_internal: str | None = None
         for child_skill in src_def.internal_successors:
@@ -136,8 +158,10 @@ class Graph:
             added.append(nid)
             last_internal = nid
 
-        # Re-wire pending successors of src_nid to wait for the last internal
-        # successor instead (e.g. formatter waits for sandbox_executor, not coder).
+        # Re-wire pending successors of src_nid to depend on the last internal
+        # successor instead (e.g. formatter waits for sandbox_executor, not
+        # coder). Without this, formatter runs in parallel with sandbox_executor
+        # and never sees the execution result.
         if last_internal:
             for other_nid in list(self.g.successors(src_nid)):
                 if other_nid == last_internal:
@@ -151,29 +175,63 @@ class Graph:
                 self.g.remove_edge(src_nid, other_nid)
                 self.g.add_edge(last_internal, other_nid)
 
-        # Critic auto-insertion: place a Critic before each pending child
-        # (both newly-added and pre-wired by planner) so the child only
-        # runs after Critic passes.
+        # Critic auto-insertion: when a `critic: true` skill completes,
+        # gate every outgoing edge (to a non-critic child) with a Critic
+        # node. Covers BOTH newly-added dynamic successors AND pre-existing
+        # edges from the initial Planner plan — earlier versions only saw
+        # `added`, so a pre-planned distiller → formatter chain bypassed
+        # the auto-critic entirely (the `critic: true` flag became a no-op
+        # in the common pre-planned case). Reading the graph's actual
+        # outgoing edges makes the flag load-bearing in both shapes.
         if src_def.critic:
-            to_guard = [n for n in self.g.successors(src_nid)
-                        if self.g.nodes[n].get("status") == "pending"
-                        and self.g.nodes[n].get("skill") != "critic"]
-            for child_nid in to_guard:
-                self.g.remove_edge(src_nid, child_nid)
-                critic_nid = self.add_node(
-                    "critic", inputs=[src_nid],
-                    metadata={"target": src_nid, "child": child_nid},
-                )
-                self.g.add_edge(critic_nid, child_nid)
-                added.append(critic_nid)
-                # child_nid.inputs intentionally still references src_nid (not
-                # critic_nid) so resolve_inputs fetches the distiller's data.
-                # The critic→child edge enforces execution order; inputs
-                # carries the data dependency.
-                # TODO: propagate child's metadata.question into this critic's
-                # metadata so the LLM can evaluate fitness-for-purpose, not
-                # just internal consistency. Also requires updating critic.md
-                # to instruct the LLM to use the QUESTION field.
+            # Find any critic node already directly connected to this source.
+            existing_critic = next(
+                (child_nid for child_nid in self.g.successors(src_nid)
+                 if self.g.nodes[child_nid].get("skill") == "critic"),
+                None,
+            )
+            if existing_critic is None:
+                # Auto-insert a new critic between src and every non-critic child.
+                child_targets: list[str] = []
+                for child_nid in list(self.g.successors(src_nid)):
+                    child_targets.append(child_nid)
+                for child_nid in child_targets:
+                    self.g.remove_edge(src_nid, child_nid)
+                    # Critics need USER_QUERY: without it the critic falls back
+                    # to MEMORY HITS for context (and stale hits from prior
+                    # sessions can fool the critic into believing the user
+                    # asked a completely different question). With USER_QUERY
+                    # the critic evaluates against the real ask and not against
+                    # whatever happens to be top-of-FAISS.
+                    critic_metadata = {"target": src_nid, "child": child_nid}
+                    target_question = self.g.nodes[src_nid].get("metadata", {}).get("question")
+                    if target_question:
+                        critic_metadata["question"] = f"Verify that the upstream output correctly answers the target question: '{target_question}'"
+
+                    critic_nid = self.add_node(
+                        "critic", inputs=["USER_QUERY", src_nid],
+                        metadata=critic_metadata,
+                    )
+                    self.g.add_edge(critic_nid, child_nid)
+                    added.append(critic_nid)
+            else:
+                # Planner manually emitted a critic — rewire every non-critic
+                # successor of src_nid through it so the critic actually gates
+                # execution. Without this, formatters/workers added by the same
+                # planner batch depend directly on src_nid (distiller) and run
+                # immediately, ignoring the critic verdict.
+                for child_nid in list(self.g.successors(src_nid)):
+                    if child_nid == existing_critic:
+                        continue
+                    if self.g.nodes[child_nid].get("skill") == "critic":
+                        continue
+                    # Only rewire if not already gated by a critic.
+                    if not any(
+                        self.g.nodes[p].get("skill") == "critic"
+                        for p in self.g.predecessors(child_nid)
+                    ):
+                        self.g.remove_edge(src_nid, child_nid)
+                        self.g.add_edge(existing_critic, child_nid)
 
         return added
 
@@ -225,10 +283,13 @@ class Executor:
 
         formatter_answer: str | None = None
         executed_count = 0
-        # Global counter for critic-fail recoveries; see recovery.MAX_CRITIC_RECOVERIES.
-        # Single-element list so handle_critic_verdict can mutate it in place.
-        critic_recovery_counter: list = [0]
-        critic_cap_hit: list = []
+        # Per-target cap for critic-fail recovery; see P1 #5 fix below.
+        recovered_branches: dict[str, bool] = {}
+        # NOTES_RUNS round-3 review #5: when the cap fires, the branch is
+        # skipped silently and the final answer reflects missing data with
+        # no flag. Track every second-or-later critic-fail here so the
+        # final log can surface it.
+        critic_fail_cap_hit: list[str] = []
 
         while True:
             ready = graph.ready_nodes()
@@ -269,6 +330,7 @@ class Executor:
                 print(f"{time.strftime('%H:%M:%S')} +{time.time()-session_start:6.1f}s [{nid:3s}] {graph.g.nodes[nid]['skill']:20s} "
                       f"{graph.g.nodes[nid]['status']:8s} "
                       f"({result.elapsed_s:.1f}s)"
+                      + (f"  path={out.get('path')}" if graph.g.nodes[nid]['skill'] == "browser" and out.get('path') else "")
                       + (f"  q={q[:80]}" if q and not verdict and not found else "")
                       + (f"  rationale={rationale[:80]}" if rationale and not q and not verdict else "")
                       + (f"  verdict={verdict}" if verdict else "")
@@ -281,8 +343,8 @@ class Executor:
                 if result.success:
                     if graph.g.nodes[nid]["skill"] == "critic":
                         if handle_critic_verdict(nid, result, graph,
-                                                 critic_recovery_counter,
-                                                 critic_cap_hit):
+                                                 recovered_branches,
+                                                 critic_fail_cap_hit):
                             continue
                         # verdict == pass: the child is now ready to run.
                     graph.extend_from(nid, result, registry=self.registry)
@@ -302,14 +364,33 @@ class Executor:
                               f"skill={failed_skill}): {decision.note}")
                         continue
                     # action == "replan"
+                    # Recovery Planner amnesia fix: pass the ids of nodes that
+                    # have already completed successfully so the recovery
+                    # Planner can wire them by id in its successor plan
+                    # instead of re-emitting fresh fan-out siblings that
+                    # duplicate work already done. Excludes planner nodes
+                    # (routing context, not data) and critic nodes (verdicts,
+                    # not data); their outputs are not useful upstream input
+                    # for a recovery plan. planner.md teaches the recovery
+                    # Planner what to do with these n:* refs.
+                    prior_complete = [
+                        n for n, d in graph.g.nodes(data=True)
+                        if d.get("status") == "complete"
+                        and d["skill"] not in ("planner", "critic")
+                        and isinstance(d.get("result"), AgentResult)
+                    ]
+                    recovery_inputs = ["USER_QUERY"] + prior_complete
                     rec_nid = graph.add_node(
-                        "planner", inputs=["USER_QUERY"],
+                        "planner", inputs=recovery_inputs,
                         metadata={"failure_report": decision.failure_report,
                                   "recovers": nid,
-                                  "recovery_reason": decision.reason},
+                                  "recovery_reason": decision.reason,
+                                  "prior_complete": prior_complete},
                     )
                     print(f"  ↪ recovery ({decision.reason}): planner node "
-                          f"{rec_nid} queued for {nid}")
+                          f"{rec_nid} queued for {nid}"
+                          + (f"; reusing {len(prior_complete)} prior result(s): "
+                             f"{', '.join(prior_complete)}" if prior_complete else ""))
 
             store.write_graph(graph.g)
 
@@ -320,12 +401,17 @@ class Executor:
                     formatter_answer = json.dumps(d["result"].output)[:2000]
                     break
 
-        if critic_cap_hit:
-            print(f"\n[flow] WARNING: global critic-fail recovery cap "
-                  f"({len(critic_cap_hit)}x hit) — one or more branches "
-                  f"skipped after {critic_recovery_counter[0]} recovery attempts. "
-                  f"Final answer may reflect missing data.")
-        print(f"\n{'═' * 78}\nFINAL: {formatter_answer or ''}\n{'═' * 78}\n")
+        if critic_fail_cap_hit:
+            # Loud surface — see review round-3 #5. Without this the cap
+            # firing was invisible and the user would just see a thin
+            # formatter answer with no explanation of why.
+            print(f"\n[flow] WARNING: critic-fail cap hit on "
+                  f"{len(critic_fail_cap_hit)} branch(es): "
+                  f"{', '.join(critic_fail_cap_hit)}. "
+                  f"The final answer reflects missing data from these "
+                  f"branches because the Critic rejected the re-planned "
+                  f"output too.")
+        print(f"\n{'═' * 78}\nFINAL: {(formatter_answer or '')}\n{'═' * 78}\n")
         return formatter_answer or ""
 
     async def _run_one(self, nid: str, graph: Graph, sid: str, query: str,

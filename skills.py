@@ -134,11 +134,12 @@ def _format_memory_hits(hits: list) -> str:
         if source:
             line += f"\n      source: {source}"
         if isinstance(chunk, str) and chunk.strip():
-            preview = chunk[:400].replace("\n", " ")
-            more = " …" if len(chunk) > 400 else ""
+            preview = chunk[:2000].replace("\n", " ")
+            more = " …" if len(chunk) > 2000 else ""
             line += f"\n      chunk: {preview}{more}"
         elif isinstance(raw, str) and raw.strip():
-            line += f"\n      raw: {raw[:200]}"
+            raw_more = " …" if len(raw) > 2000 else ""
+            line += f"\n      raw: {raw[:2000]}{raw_more}"
         lines.append(line)
     return "\n".join(lines)
 
@@ -147,9 +148,25 @@ def render_prompt(skill: Skill, query: str, resolved: list[dict],
                   failure_report: str | None = None,
                   memory_hits: list | None = None,
                   question: str | None = None) -> str:
-    parts = [skill.prompt_template().rstrip(), "", f"USER_QUERY: {query}"]
-    if question:
-        parts += [f"QUESTION: {question}"]
+    parts = [skill.prompt_template().rstrip()]
+    # USER_QUERY top-line: only when the Planner wired USER_QUERY into this
+    # node's inputs. Earlier versions added it unconditionally, which
+    # leaked the full original query into every fan-out worker — three
+    # researcher siblings spawned to "find population of A / B / C" all
+    # saw the same "compare A, B, C" query and each one ended up
+    # searching for all three. Per-node scoping now travels through
+    # `metadata.question` (rendered as QUESTION below) and the INPUTS
+    # block; USER_QUERY is present only when the Planner asked for it.
+    user_query_in_inputs = any(
+        isinstance(r, dict) and r.get("id") == "USER_QUERY" for r in resolved
+    )
+    if user_query_in_inputs:
+        parts += ["", f"USER_QUERY: {query}"]
+    # QUESTION: the per-node sub-question the Planner attached via
+    # `metadata.question`. This is how a fan-out worker learns *its*
+    # slice of the user's request without seeing the whole query.
+    if isinstance(question, str) and question.strip():
+        parts += ["", f"QUESTION: {question.strip()}"]
     if failure_report:
         parts += ["", f"FAILURE:\n{failure_report}"]
     # Memory hits — FAISS-ranked MemoryItems from session-start memory.read.
@@ -183,8 +200,6 @@ def parse_skill_json(text: str) -> dict:
     return {}
 
 
-
-
 # ── per-node execution ───────────────────────────────────────────────────────
 
 async def run_skill(skill: Skill, node_id: str, graph_nodes,
@@ -204,7 +219,13 @@ async def run_skill(skill: Skill, node_id: str, graph_nodes,
     skills are LLM-backed and route through the V8 gateway with
     agent=<skill_name> so agent_routing.yaml + cost-by-agent kick in."""
     resolved = resolve_inputs(graph_nodes[node_id]["inputs"], graph_nodes, query)
-    question = (graph_nodes[node_id].get("metadata") or {}).get("question") or None
+    # Per-node sub-question from the Planner's `metadata.question`. Travels
+    # into the rendered prompt as a QUESTION: block so a fan-out worker
+    # (e.g. one of three researchers spawned to cover three cities) can
+    # see *its* slice of the user's request even when USER_QUERY is not
+    # in its inputs.
+    node_meta = graph_nodes[node_id].get("metadata") or {}
+    question = node_meta.get("question") if isinstance(node_meta, dict) else None
     rendered = render_prompt(skill, query, resolved, failure_report,
                              memory_hits=memory_hits, question=question)
     started = time.time()
@@ -228,13 +249,36 @@ async def run_skill(skill: Skill, node_id: str, graph_nodes,
             elapsed_s=time.time() - started,
         ), rendered
 
+    if skill.name == "browser":
+        # Same shape as sandbox_executor: the Browser skill owns its own
+        # cascade (extract → deterministic → a11y → vision) and never
+        # touches the LLM tool/text channel — so we bypass render_prompt
+        # and the gateway-chat dispatch entirely and hand off to
+        # BrowserSkill.run(NodeSpec).
+        node_dict = graph_nodes[node_id]
+        node_spec = NodeSpec(
+            skill="browser",
+            inputs=node_dict.get("inputs") or [],
+            metadata=node_dict.get("metadata") or {},
+        )
+        from browser.skill import BrowserSkill
+        sk = BrowserSkill(
+            artifacts_root=str(ROOT / "state" / "sessions" / session_id / "browser"),
+            session=session_id,
+        )
+        result = await sk.run(node_spec)
+        if not result.elapsed_s:
+            result.elapsed_s = time.time() - started
+        return result, rendered
+
     if skill.tools_allowed:
-        # Multi-turn tool-use loop. mcp_runner fetches schemas live from the
-        # MCP server via list_tools() — no static catalog needed here.
+        # Multi-turn tool-use loop. mcp_runner opens one MCP stdio session
+        # per skill invocation, dispatches each tool_call the model emits,
+        # and feeds the results back until the model produces final text.
         from mcp_runner import run_with_tools
         reply = await run_with_tools(
             prompt=rendered,
-            tool_names=skill.tools_allowed,
+            allowed_names=skill.tools_allowed,
             agent=skill.name,
             session_id=session_id,
             provider_pin=skill.provider_pin,
