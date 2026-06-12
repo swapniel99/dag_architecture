@@ -135,6 +135,12 @@ class Graph:
                 # Planner emitted a bad input name; it is not the fan-out
                 # path. A future round may want to fail loudly here instead.
                 resolved.append(src_nid)
+            # Critic nodes must always have USER_QUERY so they can verify
+            # constraints from the original ask (budget, count, etc.). The
+            # auto-insertion path (extend_from critic block) always adds it,
+            # but planner-emitted critics in recovery plans often omit it.
+            if self.g.nodes[new_id].get("skill") == "critic" and "USER_QUERY" not in resolved:
+                resolved.insert(0, "USER_QUERY")
             self.g.nodes[new_id]["inputs"] = resolved
             for inp in resolved:
                 if inp.startswith("n:") and inp in self.g.nodes:
@@ -178,12 +184,14 @@ class Graph:
         # in the common pre-planned case). Reading the graph's actual
         # outgoing edges makes the flag load-bearing in both shapes.
         if src_def.critic:
-            # Check if planner has already attached a critic node for this source
-            has_critic = any(
-                self.g.nodes[child_nid].get("skill") == "critic"
-                for child_nid in self.g.successors(src_nid)
+            # Find any critic node already directly connected to this source.
+            existing_critic = next(
+                (child_nid for child_nid in self.g.successors(src_nid)
+                 if self.g.nodes[child_nid].get("skill") == "critic"),
+                None,
             )
-            if not has_critic:
+            if existing_critic is None:
+                # Auto-insert a new critic between src and every non-critic child.
                 child_targets: list[str] = []
                 for child_nid in list(self.g.successors(src_nid)):
                     child_targets.append(child_nid)
@@ -206,6 +214,24 @@ class Graph:
                     )
                     self.g.add_edge(critic_nid, child_nid)
                     added.append(critic_nid)
+            else:
+                # Planner manually emitted a critic — rewire every non-critic
+                # successor of src_nid through it so the critic actually gates
+                # execution. Without this, formatters/workers added by the same
+                # planner batch depend directly on src_nid (distiller) and run
+                # immediately, ignoring the critic verdict.
+                for child_nid in list(self.g.successors(src_nid)):
+                    if child_nid == existing_critic:
+                        continue
+                    if self.g.nodes[child_nid].get("skill") == "critic":
+                        continue
+                    # Only rewire if not already gated by a critic.
+                    if not any(
+                        self.g.nodes[p].get("skill") == "critic"
+                        for p in self.g.predecessors(child_nid)
+                    ):
+                        self.g.remove_edge(src_nid, child_nid)
+                        self.g.add_edge(existing_critic, child_nid)
 
         return added
 
