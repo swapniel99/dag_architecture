@@ -2,7 +2,7 @@
 
 A growing-graph multi-agent orchestrator extended with a **Browser skill** that performs real interactive web browsing via a four-layer cascade, and an **enhanced replay viewer** that produces a structured session report.
 
-**Demo Video:** _(add YouTube link)_
+**Demo Video:** [Browser Skill](https://youtu.be/_5K4t9dja5c)
 
 ---
 
