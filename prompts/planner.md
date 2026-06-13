@@ -32,6 +32,10 @@ Available skills:
                      point of having Browser in the first place;
                      a pre-filtered URL would skip the interactive
                      path the cascade is built for.
+                     When the query has a constraint (price under X,
+                     brand=Y, condition=new, location=Z, etc.), the
+                     goal MUST say "apply the <constraint> filter
+                     from the sidebar/filter widget".
                      Do NOT set metadata.force_path. Let the
                      cascade choose its own layer; the skill knows
                      how to escalate from extract → a11y → vision
