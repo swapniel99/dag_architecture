@@ -413,6 +413,12 @@ class Executor:
                   f"branches because the Critic rejected the re-planned "
                   f"output too.")
         print(f"\n{'═' * 78}\nFINAL: {(formatter_answer or '')}\n{'═' * 78}\n")
+        if formatter_answer:
+            try:
+                pass
+                memory_svc.remember(formatter_answer, source="agent_answer", run_id=sid)
+            except Exception as e:
+                print(f"[memory.remember] skipped: {e!r}")
         return formatter_answer or ""
 
     async def _run_one(self, nid: str, graph: Graph, sid: str, query: str,
