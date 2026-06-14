@@ -20,8 +20,17 @@ import time
 from pathlib import Path
 
 import httpx
+from dotenv import load_dotenv
+load_dotenv()
 
-GATEWAY_V9_DIR = Path(__file__).resolve().parents[2] / "llm_gatewayV9"
+# Sibling layout: S8SharedCode/code/  and  S8SharedCode/gateway/. We resolve
+# the gateway dir relative to this file so the package works wherever the
+# student unzips it. Override with EAGV3_GATEWAY_DIR if you move things.
+import os as _os
+GATEWAY_V9_DIR = Path(
+    _os.environ.get("EAGV3_GATEWAY_DIR")
+    or (Path(__file__).resolve().parent.parent / "gateway")
+).resolve()
 GATEWAY_URL = "http://localhost:8109"
 
 
