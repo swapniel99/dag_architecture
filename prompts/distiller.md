@@ -16,15 +16,19 @@ Output schema (JSON, no prose, no markdown fences):
 
   {
     "fields": { "<field_name>": "<value>", ... },
+    "evidence": { "<field_name>": "<exact short quote supporting this field>", ... },
     "rationale": "<one short sentence saying which input supports each field>"
   }
 
 Notes:
   - The fields dictionary is the load-bearing output; downstream
     Formatter nodes read it.
+  - The evidence dictionary maps each field name to the exact short quote from
+    the inputs that supports it. Keep each quote extremely short (e.g., a single
+    phrase or sentence). Do NOT dump entire paragraphs.
   - When the question is a comparison (`fastest growing`, `largest`),
     emit a `comparison` key with `winner: <id>` and `reason: <short>`.
-  - When the question's evidence is missing, set `fields: {}` and put
+  - When the question's evidence is missing, set `fields: {}`, `evidence: {}`, and put
     the gap in `rationale`. Do not invent.
   - Be extremely careful when extracting numeric metrics. Check the
     surrounding labels or units to make sure you do not confuse
