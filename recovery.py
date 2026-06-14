@@ -137,11 +137,12 @@ def handle_critic_verdict(nid: str, result, graph, recovered_branches: dict,
         # by n:<id> instead of re-running the same work. planner.md recovery
         # section teaches the planner to do this. Excluding target_nid
         # prevents the planner from reusing the output the critic rejected.
+        all_rejected = set(recovered_branches.keys()) | {target_nid}
         prior_complete = [
             n for n, d in graph.g.nodes(data=True)
             if d.get("status") == "complete"
             and d["skill"] not in ("planner", "critic")
-            and n != target_nid
+            and n not in all_rejected
         ]
         recovery_inputs = ["USER_QUERY"] + prior_complete
         rec_nid = graph.add_node("planner", inputs=recovery_inputs,

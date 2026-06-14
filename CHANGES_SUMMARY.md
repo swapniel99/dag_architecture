@@ -25,7 +25,7 @@
 
 **Empty output treated as fail** (Bugfix)
 - Critic returning empty/unparseable output previously defaulted to `pass` (missing key → `"pass"`).
-- Now: empty output logs warning and falls through to fail handling so branch retries.
+- Now: empty output logs warning, falls through to fail handling so branch retries.
 
 **Default verdict flipped** (Bugfix)
 - `output.get("verdict", "pass")` → `output.get("verdict", "fail")` — safer default when key absent.
@@ -233,3 +233,30 @@ Four-layer cascade: extract → deterministic → a11y → vision. Registered as
 **Surface driver done-note in output** (Bugfix)
 - `_pack_driver` discarded `drv_result.note` (LLM's extraction summary from `done(note=...)`) and only used raw trafilatura page extract. Downstream distillers received full page HTML with no signal about what driver actually found.
 - Now prepends `[driver extracted: <note>]` to trafilatura content when note non-empty, giving distillers ground-truth signal alongside raw page text.
+
+---
+
+## New Changes (vs session s8-4471af3d diagnosis)
+
+### browser/driver.py
+
+**Partial-count success now fails correctly** (Bugfix)
+- Driver was calling `done(success=True)` with fewer items than goal required (e.g. 2 laptops when 3 needed), because count rule only said "scroll before calling done" but didn't specify what to do when scrolling still yields too few.
+- Strengthened rule in both `SYSTEM_PROMPT_VISION` and `SYSTEM_PROMPT_A11Y`: after scrolling/paginating, if count still short, driver MUST call `done(success=False, note='found X of N required: ...')` — never `done(success=True)` with unmet count. Causes a11y layer to fail and cascade to vision; or browser to return failure to orchestrator for proper recovery.
+
+**Keyword-advisory constraint warning** (Improvement)
+- Added rule to both `SYSTEM_PROMPT_VISION` and `SYSTEM_PROMPT_A11Y`: when goal has numeric constraint (price under X, rating above Y), do NOT trust search keyword to enforce it — site may show out-of-range results anyway. Must apply site's filter widget and verify constraint active (URL param, badge, result range) before extracting.
+- Moved from planner.md — driver is right enforcer; planner only needs to say "apply filter widget" in goal.
+
+### prompts/planner.md
+
+**Numeric constraint must use filter widget, not keyword** (Improvement)
+- Planner was encoding price constraints in search keywords (`k=laptops+under+80000`) rather than instructing browser to apply site's price filter widget. Search keywords advisory — only filter widgets guarantee site enforces bound.
+- Added explicit rule: when query has numeric constraint (price under X, rating above Y, date after Z), browser `goal` MUST include "apply the <constraint> filter from the sidebar/filter widget".
+
+### recovery.py
+
+**Exclude all previously-rejected nodes from recovery planner inputs** (Bugfix)
+- `prior_complete` only excluded current `target_nid` (node whose output failing critic rejected). On second recovery cycle, nodes rejected by earlier critics slipped back in as "valid prior work."
+- Example: critic n:5 rejected distiller n:3 → n:3 in `recovered_branches`. Critic n:10 then failed on n:8 → recovery planner n:11 got `target_nid=n:8`, excluded n:8, but n:3 (stale rejected distiller output) was re-included.
+- Fix: `all_rejected = set(recovered_branches.keys()) | {target_nid}`. Excludes all ever-rejected targets, not just current one.
