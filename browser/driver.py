@@ -122,6 +122,8 @@ SYSTEM_PROMPT_A11Y = (
     "  type(mark, value, clear?)  — focus the element then type `value`\n"
     "  key(value)                 — press a key like 'Enter', 'Tab', 'ArrowDown'\n"
     "  scroll(direction, amount?) — direction in ['up','down','left','right']\n"
+    "  drag(from_x, from_y, to_x, to_y) — mouse drag in CSS pixels (use for \n"
+    "    canvas/SVG drawing where no element id covers the target)\n"
     "  wait(seconds)              — pause to let the page settle\n"
     "  done(success, note)        — finish; success=true if the goal is met\n"
     "\n"
