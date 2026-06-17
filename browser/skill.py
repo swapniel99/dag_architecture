@@ -192,9 +192,16 @@ class BrowserSkill:
         # ── Layer 2a: deterministic selectors (only if caller gave any) ────
         # Tightly scoped: this branch only fires when the Planner / caller
         # supplies `metadata.selectors`. The convention is metadata.selectors
-        # = list of {action: "click"|"fill", selector, value?}. When no
-        # selectors are given we go straight to a11y. We never try to *guess*
-        # selectors here — that would re-create the brittleness Layer 2b
+        # = list of {action: "click"|"fill"|"key", selector, value?}.
+        # Example format:
+        #   metadata: {
+        #     "selectors": [
+        #       {"action": "fill", "selector": "input#searchInput", "value": "Python"},
+        #       {"action": "click", "selector": "button[type='submit']"}
+        #     ]
+        #   }
+        # When no selectors are given we go straight to a11y. We never try to
+        # *guess* selectors here — that would re-create the brittleness Layer 2b
         # exists to solve.
         selectors = node.metadata.get("selectors") or []
         if selectors:
@@ -333,10 +340,18 @@ class BrowserSkill:
                         return None
                     if step.get("action") == "fill":
                         await loc.fill(step.get("value", ""))
+                        await page.wait_for_timeout(1000)
                     elif step.get("action") == "click":
+                        try:
+                            # Strip target="_blank" so navigation stays in the same tab
+                            await loc.evaluate("el => el.removeAttribute('target')")
+                        except Exception:                          # noqa: BLE001
+                            pass
                         await loc.click()
+                        await page.wait_for_timeout(3000)
                     elif step.get("action") == "key":
                         await page.keyboard.press(step.get("value", "Enter"))
+                        await page.wait_for_timeout(2000)
                 content = _extract(await page.content())
                 final = page.url
                 await browser.close()
