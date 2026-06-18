@@ -245,7 +245,7 @@ class Executor:
 
     async def run(self, query: str, *, session_id: str | None = None,
                   resume: bool = False) -> str:
-        sid = session_id or f"s8-{uuid.uuid4().hex[:8]}"
+        sid = session_id or f"s-{uuid.uuid4().hex[:8]}"
         store = SessionStore(sid)
         if resume:
             existing = store.read_graph()

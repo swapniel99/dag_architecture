@@ -260,3 +260,12 @@ Four-layer cascade: extract → deterministic → a11y → vision. Registered as
 - `prior_complete` only excluded current `target_nid` (node whose output failing critic rejected). On second recovery cycle, nodes rejected by earlier critics slipped back in as "valid prior work."
 - Example: critic n:5 rejected distiller n:3 → n:3 in `recovered_branches`. Critic n:10 then failed on n:8 → recovery planner n:11 got `target_nid=n:8`, excluded n:8, but n:3 (stale rejected distiller output) was re-included.
 - Fix: `all_rejected = set(recovered_branches.keys()) | {target_nid}`. Excludes all ever-rejected targets, not just current one.
+
+---
+
+## New Changes (vs session s8-0d7ab8d7 diagnosis)
+
+### browser/driver.py
+
+**Allow drag actions in a11y system prompt** (Feature)
+- Added `drag(from_x, from_y, to_x, to_y)` action documentation to `SYSTEM_PROMPT_A11Y`. This exposes the drag capability (already supported in the action schema and dispatcher) to the text-only accessibility agent, allowing it to attempt canvas drawing or drag-and-drop actions when requested.
