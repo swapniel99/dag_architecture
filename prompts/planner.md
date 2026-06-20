@@ -62,25 +62,33 @@ Available skills:
                      Required metadata:
                        goal (str) — what to accomplish in the app
                        app_name (str) — human-readable app name, e.g.
-                         "Safari", "Obsidian", "VS Code", "Calculator", "Notes"
+                         "Safari", "Mail", "Finder", or any installed app
                      Optional metadata:
                        force_path (str) — "vision" to skip AX and go
                          straight to screenshot + vision LLM. Use when
                          the target area is a canvas or game board with
-                         no accessible elements.
+                         no accessible elements AND there is no prior
+                         navigation step needed. Do NOT set force_path
+                         just because the final observation is visual —
+                         the cascade escalates AX → vision automatically.
                      Scoping: computer nodes are scoped by metadata.goal.
                      Do NOT list USER_QUERY in a computer node's inputs
                      unless the goal literally IS the full user query.
+                     Single-app rule: do NOT split navigation and visual
+                     observation into separate nodes for the same app. One
+                     node with a combined goal is correct — the cascade
+                     handles AX for interaction then escalates to vision
+                     for reading, all within one node.
                      For multi-app workflows, emit one computer node per
                      app and chain them: the second node lists the first
                      node's label in inputs so the result flows through.
                      Example — read value from one app, write it into another:
                        {"skill":"computer","inputs":[],
-                        "metadata":{"label":"src","app_name":"Calculator",
-                          "goal":"extract the current value and return it"}},
+                        "metadata":{"label":"src","app_name":"<source app>",
+                          "goal":"<extract the value and return it>"}},
                        {"skill":"computer","inputs":["n:src"],
-                        "metadata":{"label":"dst","app_name":"Notes",
-                          "goal":"open a new document and paste the value from upstream"}}
+                        "metadata":{"label":"dst","app_name":"<target app>",
+                          "goal":"<open document and paste the value from upstream>"}}
 
 ALWAYS insert a `distiller` node between Browser (or computer) and Formatter when
 the user wants structured fields per item (a list of model_name +

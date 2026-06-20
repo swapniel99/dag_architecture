@@ -453,10 +453,20 @@ class VisionDriver:
         elif atype == "click_xy":
             await self.cua.call("click", {**base, "x": act["x"], "y": act["y"]})
         elif atype == "type":
+            text = act.get("value", "")
             mark = act.get("mark")
             if mark is not None:
-                await self.cua.call("click", {**base, "element_index": mark})
-            await self.cua.call("type_text", {**base, "text": act.get("value", "")})
+                try:
+                    await self.cua.call("click", {**base, "element_index": mark})
+                    await asyncio.sleep(0.1)
+                except Exception:
+                    pass
+            if text:
+                subprocess.run(["pbcopy"], input=text.encode(), check=True)
+                await asyncio.sleep(0.05)
+                await self.cua.call("hotkey", {
+                    "pid": self.pid, "window_id": self.window_id, "keys": ["cmd", "v"]
+                })
         elif atype == "key":
             await self.cua.call("press_key", {"pid": self.pid, "key": act.get("value", "")})
         elif atype == "scroll":

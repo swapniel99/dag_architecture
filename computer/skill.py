@@ -49,6 +49,8 @@ _APP_NAME_TO_BUNDLE: dict[str, str] = {
     "textedit":   "com.apple.TextEdit",
     "terminal":   "com.apple.Terminal",
     "xcode":      "com.apple.dt.Xcode",
+    "chess":      "com.apple.Chess",
+    "grapher":    "com.apple.grapher",
 }
 
 # Known Electron apps — skill auto-enables CDP without planner involvement.
@@ -146,14 +148,32 @@ class ComputerSkill:
             except Exception:
                 pass
 
-        window_id: int | None = None
-        for w in windows:
-            window_id = w.get("window_id")
-            if w.get("on_current_space") or w.get("is_on_screen"):
-                break
+        def _pick_window(wins: list) -> int | None:
+            # Prefer on-current-space / on-screen; fall back to largest by area.
+            for w in wins:
+                if w.get("on_current_space") or w.get("is_on_screen"):
+                    return w.get("window_id")
+            if wins:
+                best = max(wins, key=lambda w: (
+                    (w.get("bounds") or {}).get("width", 0) *
+                    (w.get("bounds") or {}).get("height", 0)
+                ))
+                return best.get("window_id")
+            return None
 
-        if window_id is None and windows:
-            window_id = windows[0].get("window_id")
+        window_id = _pick_window(windows)
+
+        # Some apps (e.g. Chess, sandboxed games) don't expose windows via the
+        # window server list but still respond to AX calls on window_id=1.
+        if window_id is None and pid:
+            try:
+                probe = await cua.call("get_window_state", {
+                    "pid": pid, "window_id": 1, "capture_mode": "ax",
+                })
+                if probe.get("element_count", 0) > 0:
+                    window_id = 1
+            except Exception:
+                pass
 
         if window_id is None:
             return self._pack_error(bundle_id or app_name or "", goal,
@@ -170,10 +190,9 @@ class ComputerSkill:
         try:
             wins_resp = await cua.call("list_windows", {"pid": pid})
             new_windows = wins_resp.get("windows") or []
-            for w in new_windows:
-                if w.get("is_on_screen") or w.get("on_current_space"):
-                    window_id = w.get("window_id")
-                    break
+            new_wid = _pick_window(new_windows)
+            if new_wid is not None:
+                window_id = new_wid
         except Exception:
             pass  # keep original window_id
 
@@ -317,8 +336,10 @@ class ComputerSkill:
         "  work the same way.\n"
         "- Always include a clear/reset key first when using a calculator or form\n"
         "  that may have prior state.\n"
-        "- Return hotkeys=[] ONLY IF the task requires typing dynamic text you do\n"
-        "  not yet know, or branching on unknown intermediate state.\n"
+        "- Return hotkeys=[] ONLY IF the task requires: typing a URL in a browser\n"
+        "  address bar, typing arbitrary multi-character text strings, typing dynamic\n"
+        "  text you do not yet know, or branching on unknown intermediate state.\n"
+        "  Do NOT try to type URLs character by character — return [] instead.\n"
         "  Reading the final result AFTER the sequence is always fine.\n\n"
         "Key format: single key as-is (\"5\", \"=\", \"Return\"),\n"
         "modifier combo as \"mod+key\" (\"shift+8\", \"cmd+n\").\n"

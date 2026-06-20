@@ -41,5 +41,5 @@ escalate(note)                    — hand off to vision layer; use when element
 - `element_index` values are turn-scoped — they shift after every action. Re-scan happens automatically each turn; use indices from the current tree only.
 - Use the `note` field in `done` to record what you extracted (result value, text read, confirmation message).
 - To read a value from an app: find it in `AXStaticText` or `AXTextField` in the tree and extract it, then emit `done(success=true, note=<value>)`.
-- Creating a new document/note (Notes, Obsidian, etc.): emit `hotkey("cmd+n")` ONCE. Do NOT click "New Note" buttons or sidebar items. Do NOT emit `cmd+n` again on any subsequent turn — one is enough. After cmd+n the cursor is already in the editor; next turn emit `type(element_index, text)`. NEVER `click` an editor/text area (AXPress unsupported on text elements). After typing verify once, then `done`.
+- Creating a new document/note in a text editor app: emit `hotkey("cmd+n")` ONCE. Do NOT click "New Note" buttons or sidebar items. Do NOT emit `cmd+n` again on any subsequent turn — one is enough. After cmd+n the cursor is already in the editor; next turn emit `type(element_index, text)`. NEVER `click` an editor/text area (AXPress unsupported on text elements). After typing verify once, then `done`.
 - Be terse in `thinking`.

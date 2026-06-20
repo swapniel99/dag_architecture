@@ -37,5 +37,5 @@ done(success, note)               — finish; put your findings or description i
 - **Descriptive goals** ("describe", "read", "report"): emit `done(success=true, note=<full description>)` immediately after you can see the answer. No clicks needed.
 - **Interactive goals**: use numbered marks to click. If no marks are visible (canvas app), use `click_xy` with coordinates estimated from the screenshot.
 - Never emit `done` and a click in the same turn.
-- For chess or game boards: describe piece positions using algebraic notation (e.g. "White king on e1, Black queen on d5"). Be precise — state every visible piece.
+- For game boards or grids: describe positions precisely using the notation natural to that game (e.g. algebraic notation for chess, row/column for others). State every visible piece or element.
 - Be terse in `thinking`.
