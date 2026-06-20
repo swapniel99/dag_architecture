@@ -32,6 +32,19 @@ def classify_failure(error_text: str) -> RecoveryReason:
         return "upstream_failure"
     if "malformed" in e or "validationerror" in e or "validation error" in e:
         return "validation_error"
+    # Computer-use permanent failures: all cascade layers exhausted, or macOS
+    # permission denied. Retrying with a different plan won't fix these.
+    non_retryable_markers = (
+        "all layers exhausted",
+        "screen recording",
+        "accessibility permission",
+        "permission denied",
+        "no windows found",
+        "launch_app failed",
+        "app_bundle_id or app_name required",
+    )
+    if any(m in e for m in non_retryable_markers):
+        return "validation_error"
     transient_markers = (
         "503", "502", "504",
         "timeout", "timed out",

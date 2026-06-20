@@ -228,7 +228,7 @@ uv run python replay_enhanced.py <session_id>
 flow.py (Graph + Executor + CLI)
     ↓ spawns
 skills.py (SkillRegistry + run_skill)
-    ├── gateway.py → llm_gatewayV8 :8108   (all LLM skills)
+    ├── gateway.py → llm_gatewayV8 :8109   (all LLM skills)
     ├── mcp_runner.py → mcp_server.py       (tool-use loop)
     ├── sandbox.py                          (subprocess Python runner)
     └── browser/skill.py                   (S9: cascade browser)
@@ -272,7 +272,7 @@ state/sessions/<sid>/
 | `browser/client.py` | `V9Client` — gateway HTTP client |
 | `replay_enhanced.py` | S9: structured 8-field replay report |
 | `replay.py` | S8: interactive node-by-node replay |
-| `gateway.py` | Bridge to LLM Gateway V8 on `localhost:8108` |
+| `gateway.py` | Bridge to LLM Gateway V8 on `localhost:8109` |
 | `persistence.py` | Session writes: `graph.json` + per-node JSON |
 | `sandbox.py` | Subprocess Python runner |
 | `mcp_runner.py` | Multi-turn tool-use loop |

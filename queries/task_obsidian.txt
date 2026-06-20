@@ -1,0 +1,1 @@
+find the opening paragraph of the latest AI news article on techcrunch.com and save it as a new Obsidian note titled "AI News"

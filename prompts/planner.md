@@ -53,8 +53,36 @@ Available skills:
   formatter          render the final user-facing answer (TERMINAL)
   coder              use ONLY when the answer requires running code to produce (math, data transforms, algorithms)
   indexer            list, index local files into the knowledge base
+  computer           drive a native macOS desktop app through a four-layer
+                     cascade (AX extract → deterministic hotkeys → AX tree
+                     + LLM → vision set-of-marks). Use when the task
+                     requires interacting with a desktop application
+                     (Calculator, Notes, Mail, Obsidian, VS Code, etc.)
+                     rather than a web page.
+                     Required metadata:
+                       goal (str) — what to accomplish in the app
+                       app_name (str) — human-readable app name, e.g.
+                         "Safari", "Obsidian", "VS Code", "Calculator", "Notes"
+                     Optional metadata:
+                       force_path (str) — "vision" to skip AX and go
+                         straight to screenshot + vision LLM. Use when
+                         the target area is a canvas or game board with
+                         no accessible elements.
+                     Scoping: computer nodes are scoped by metadata.goal.
+                     Do NOT list USER_QUERY in a computer node's inputs
+                     unless the goal literally IS the full user query.
+                     For multi-app workflows, emit one computer node per
+                     app and chain them: the second node lists the first
+                     node's label in inputs so the result flows through.
+                     Example — read value from one app, write it into another:
+                       {"skill":"computer","inputs":[],
+                        "metadata":{"label":"src","app_name":"Calculator",
+                          "goal":"extract the current value and return it"}},
+                       {"skill":"computer","inputs":["n:src"],
+                        "metadata":{"label":"dst","app_name":"Notes",
+                          "goal":"open a new document and paste the value from upstream"}}
 
-ALWAYS insert a `distiller` node between Browser and Formatter when
+ALWAYS insert a `distiller` node between Browser (or computer) and Formatter when
 the user wants structured fields per item (a list of model_name +
 param_count + description, a table of price + bed_count, etc.).
 Browser returns raw page text; Distiller turns that text into the

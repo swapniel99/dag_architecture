@@ -330,8 +330,9 @@ class Executor:
                 print(f"{time.strftime('%H:%M:%S')} +{time.time()-session_start:6.1f}s [{nid:3s}] {graph.g.nodes[nid]['skill']:20s} "
                       f"{graph.g.nodes[nid]['status']:8s} "
                       f"({result.elapsed_s:.1f}s)"
-                      + (f"  path={out.get('path')}" if graph.g.nodes[nid]['skill'] == "browser" and out.get('path') else "")
-                      + (f"  goal={out.get('goal','')[:80]}" if graph.g.nodes[nid]['skill'] == "browser" and out.get('goal') else "")
+                      + (f"  path={out.get('path')}" if graph.g.nodes[nid]['skill'] in ("browser", "computer") and out.get('path') else "")
+                      + (f"  turns={out.get('turns')}" if graph.g.nodes[nid]['skill'] == "computer" and out.get('turns') is not None else "")
+                      + (f"  goal={out.get('goal','')[:80]}" if graph.g.nodes[nid]['skill'] in ("browser", "computer") and out.get('goal') else "")
                       + (f"  q={q[:80]}" if q and not verdict and not found else "")
                       + (f"  rationale={rationale[:80]}" if rationale and not q and not verdict else "")
                       + (f"  verdict={verdict}" if verdict else "")

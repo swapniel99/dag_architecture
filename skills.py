@@ -271,6 +271,45 @@ async def run_skill(skill: Skill, node_id: str, graph_nodes,
             result.elapsed_s = time.time() - started
         return result, rendered
 
+    if skill.name == "computer":
+        node_dict = graph_nodes[node_id]
+        # Build upstream context from resolved inputs so computer/skill.py can
+        # inject the actual values (e.g. Calculator result) into the AX goal.
+        upstream_parts = []
+        for r in resolved:
+            if r.get("kind") == "upstream" and isinstance(r.get("output"), dict):
+                out = r["output"]
+                content = out.get("content") or ""
+                # Distiller/researcher outputs store data in 'fields' or 'text', not 'content'
+                if not content:
+                    fields = out.get("fields")
+                    if isinstance(fields, dict):
+                        import json as _json
+                        content = _json.dumps(fields, ensure_ascii=False)
+                    elif out.get("text"):
+                        content = out["text"]
+                if content:
+                    upstream_parts.append(
+                        f"[{r['id']} ({r.get('skill', '')}) result]: {content}"
+                    )
+        node_spec = NodeSpec(
+            skill="computer",
+            inputs=node_dict.get("inputs") or [],
+            metadata={
+                **(node_dict.get("metadata") or {}),
+                "_upstream_content": upstream_parts,
+            },
+        )
+        from computer.skill import ComputerSkill
+        sk = ComputerSkill(
+            artifacts_root=str(ROOT / "state" / "sessions" / session_id / "computer"),
+            session=session_id,
+        )
+        result = await sk.run(node_spec)
+        if not result.elapsed_s:
+            result.elapsed_s = time.time() - started
+        return result, rendered
+
     if skill.tools_allowed:
         # Multi-turn tool-use loop. mcp_runner opens one MCP stdio session
         # per skill invocation, dispatches each tool_call the model emits,
