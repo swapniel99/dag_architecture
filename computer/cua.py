@@ -14,31 +14,63 @@ import asyncio
 import json
 import subprocess
 
-
 class CUAClient:
-    async def call(self, tool: str, args: dict) -> dict:
-        proc = await asyncio.create_subprocess_exec(
-            "cua-driver", "call", tool, json.dumps(args),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await proc.communicate()
-        if proc.returncode != 0:
-            err = stderr.decode(errors="replace").strip()
-            raise RuntimeError(
-                f"cua-driver call {tool} failed (rc={proc.returncode}): {err}"
+    def __init__(self):
+        self._mcp_proc: asyncio.subprocess.Process | None = None
+        self._mcp_id: int = 0
+
+    async def _ensure_mcp(self) -> None:
+        if self._mcp_proc is None or self._mcp_proc.returncode is not None:
+            self._mcp_proc = await asyncio.create_subprocess_exec(
+                "cua-driver", "mcp",
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+                limit=10485760,  # 10MB limit for large MCP payloads
             )
-        raw = stdout.decode().strip()
-        if not raw:
-            return {"success": True}
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            # action tools (click, press_key, hotkey) emit plain-text:
-            # success lines start with "✅"; anything else is an action failure.
-            if raw.startswith("AX action failed") or (not raw.startswith("✅") and "failed" in raw.lower()):
-                raise RuntimeError(f"cua-driver {tool}: {raw}")
-            return {"success": True, "message": raw}
+
+    async def call(self, tool: str, args: dict) -> dict:
+        await self._ensure_mcp()
+        self._mcp_id += 1
+        req = {
+            "jsonrpc": "2.0",
+            "id": self._mcp_id,
+            "method": "tools/call",
+            "params": {"name": tool, "arguments": args}
+        }
+        assert self._mcp_proc and self._mcp_proc.stdin and self._mcp_proc.stdout
+        self._mcp_proc.stdin.write(json.dumps(req).encode() + b"\n")
+        await self._mcp_proc.stdin.drain()
+
+        while True:
+            line = await self._mcp_proc.stdout.readline()
+            if not line:
+                raise RuntimeError("cua-driver mcp died")
+            try:
+                resp = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            if resp.get("id") == self._mcp_id:
+                if "error" in resp:
+                    raise RuntimeError(f"cua-driver {tool}: {resp['error']}")
+
+                result = resp.get("result", {})
+                content = result.get("content", [])
+
+                if "structuredContent" in result:
+                    return result["structuredContent"]
+
+                if not content:
+                    return {"success": True}
+                raw = content[0].get("text", "")
+
+                try:
+                    return json.loads(raw)
+                except Exception:
+                    if raw.startswith("AX action failed") or (not raw.startswith("✅") and "failed" in raw.lower()):
+                        raise RuntimeError(f"cua-driver {tool}: {raw}")
+                    return {"success": True, "message": raw}
 
     async def ensure_daemon(self) -> None:
         """Start cua-driver daemon if not already running."""

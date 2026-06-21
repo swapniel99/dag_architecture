@@ -36,6 +36,8 @@ _PROMPTS = Path(__file__).parent.parent / "prompts"
 _AX_SYS  = (_PROMPTS / "computer.md").read_text()
 _VIS_SYS = (_PROMPTS / "computer_vision.md").read_text()
 
+# TODO: Hardcoding Obsidian-specific API instructions in the general Electron driver doesn't scale well.
+# In the future, we should load app-specific prompt snippets dynamically based on the target app name.
 _EL_SYS = """You are a CDP (Chrome DevTools Protocol) automation agent for Electron apps.
 
 Each turn you receive the current page text and recent action history.
@@ -51,14 +53,16 @@ done(success, note)             — finish; note = what you did or extracted
 ## Obsidian-specific (when driving Obsidian)
 - Write/create a note (works for new AND existing files):
     app.vault.adapter.write('NoteName.md', 'content').then(()=>'ok').catch(e=>e.message)
+- To open a note in the workspace (do this after writing):
+    app.workspace.openLinkText('NoteName.md', '')
 - NEVER use app.vault.create — it fails if file already exists.
-- After adapter.write returns 'ok': emit done(success=true, note=<content written>).
+- After adapter.write returns 'ok', you MUST open the note with openLinkText. After that, emit done(success=true, note=<content written>).
 - Do NOT call write more than once.
 - Verify: app.vault.read(app.vault.getAbstractFileByPath('NoteName.md')).then(c=>c)
 
 ## Rules
 - One action per turn.
-- STOP RULE: if the recent actions history shows adapter.write(...) → js returned: ok — the write SUCCEEDED. Your ONLY valid next action is done(success=true, note=<content written>). Do NOT call write again. Do NOT verify. Emit done immediately.
+- STOP RULE: if the recent actions history shows adapter.write(...) → js returned: ok, you MUST open the note. Then, emit done. Do NOT call write again. Emit done after opening.
 - If an action fails twice in a row, try a different approach.
 - done must come ALONE — never bundle with other actions."""
 
