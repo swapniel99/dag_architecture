@@ -111,9 +111,9 @@ If Obsidian is already running without the port, the CDP WebSocket is not availa
 **File:** `queries/task_vision2.txt`
 
 **What happens:**
-1. Planner emits one `computer` node for Chess with `force_path` omitted — cascade decides.
-2. Layer 2b AX scan: `list_windows` returns `[]` for Chess (sandboxed game app). Probe `window_id=1` via `get_window_state` confirms `element_count > 0`, so AX works for activation — but piece positions are not in the AX tree (3D Metal renderer).
-3. AXDriver escalates → VisionDriver captures screenshot with set-of-marks annotations → vision LLM reads piece positions and returns algebraic notation.
+1. Planner emits one `computer` node for Chess with `force_path="vision"` to bypass AX tree scanning.
+2. Skill goes straight to `VisionDriver` (Layer 3).
+3. VisionDriver captures screenshot with set-of-marks annotations → vision LLM reads board/pieces and performs the move or describes the position.
 
 **Layer chosen:** `path=vision` (turns=1)  
 **Constraint satisfied:** ✅ vision
@@ -143,7 +143,7 @@ If Obsidian is already running without the port, the CDP WebSocket is not availa
 
 `list_windows` for Safari returned multiple windows. The first window (height=39px, the toolbar strip) was selected instead of the main content window. `get_window_state` on the toolbar returned 0 actionable content elements.
 
-**Fix:** `_pick_window()` in `skill.py` prefers windows with `on_current_space=true` or `is_on_screen=true`; falls back to the largest by pixel area when neither flag is set.
+**Fix:** `_pick_window()` in `skill.py` filters for visible windows (on-screen/on-space), and among those candidates, selects the largest by pixel area.
 
 ### 2. Chess `list_windows` returns `[]`
 
@@ -168,6 +168,18 @@ Grapher's equation input field rejects `type_text` from cua-driver (custom rende
 When Obsidian is not running, `launch_app` without `electron_debugging_port` opens it in normal mode. The CDP WebSocket on port 9222 is never available. The Electron driver times out (~8s) and falls through to the AX path, which returns an opaque `AXWebArea` with no usable elements.
 
 **Root cause:** `launch_app` with `electron_debugging_port` only works if the app is not already running (macOS re-uses the existing process). Pre-launching Obsidian with the port once per session is the reliable workaround.
+
+### 6. Stateless VLM forgets past actions
+
+Chess moves require multi-turn interaction (e.g., click e2 on Turn 1, then click e4 on Turn 2). Since the vision LLM is stateless, it would repeatedly click the starting square without realizing it had already done so.
+
+**Fix:** Pass `Recent actions` (the history of previous actions and their outcomes) into the VisionDriver prompt.
+
+### 7. VLM short-circuits on "describe and move" goals
+
+If a task contains both descriptive and interactive requirements (e.g. "describe board and make a move"), the VLM would call `done` immediately after seeing the initial board, without executing the move.
+
+**Fix:** Clarify in `prompts/computer_vision.md` that for interactive goals, the VLM must perform all required interactions first, and only call `done` on a later turn when all actions are finished.
 
 ---
 
