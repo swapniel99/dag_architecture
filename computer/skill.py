@@ -285,7 +285,6 @@ class ComputerSkill:
                 return self._pack_driver("electron", app_id, goal, el_result,
                                          elapsed=time.time() - t0,
                                          recording_dir=recording_dir)
-            print(f"[computer] Electron failed ({el_result.note!r}), falling to a11y", flush=True)
             # fall through to AX driver on Electron failure
 
         # ── Layer 2b: AX tree + LLM ───────────────────────────────────────────

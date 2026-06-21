@@ -642,7 +642,6 @@ class ElectronDriver:
                 outcomes.append(outcome)
                 js_val = act.get("javascript", act.get("selector", ""))[:80]
                 history.append(f"turn {turn}: {atype}({js_val!r}) → {outcome}")
-                print(f"[electron t{turn}] {atype}({js_val[:60]!r}) → {outcome[:60]}", flush=True)
 
             self.steps.append(StepRecord(turn, thinking, actions, "; ".join(outcomes) or "ok"))
             if failures >= self.cfg.max_failures:
