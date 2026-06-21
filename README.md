@@ -2,7 +2,7 @@
 
 A growing-graph multi-agent orchestrator extended with a **Computer-Use skill** that drives native macOS desktop apps through a five-layer cascade via `cua-driver`, plugging into the same Session 9 runtime without modifying the orchestrator.
 
-**Demo Video:** _[to be added]_
+**Demo Video:** [Watch on YouTube](https://youtu.be/iIYy5Z6QAo8)
 
 ---
 
