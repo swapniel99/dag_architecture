@@ -66,11 +66,10 @@ Available skills:
                      Optional metadata:
                        force_path (str) — "vision" to skip AX and go
                          straight to screenshot + vision LLM. Use when
-                         the target area is a canvas or game board with
-                         no accessible elements AND there is no prior
-                         navigation step needed. Do NOT set force_path
-                         just because the final observation is visual —
-                         the cascade escalates AX → vision automatically.
+                         the task is primarily visual (like reading a game
+                         board, observing a canvas, or describing UI layout).
+                         Set this immediately for visual tasks to save time
+                         instead of relying on the cascade to escalate.
                      Scoping: computer nodes are scoped by metadata.goal.
                      Do NOT list USER_QUERY in a computer node's inputs
                      unless the goal literally IS the full user query.
