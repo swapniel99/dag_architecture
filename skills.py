@@ -226,8 +226,6 @@ async def run_skill(skill: Skill, node_id: str, graph_nodes,
     # in its inputs.
     node_meta = graph_nodes[node_id].get("metadata") or {}
     question = node_meta.get("question") if isinstance(node_meta, dict) else None
-    rendered = render_prompt(skill, query, resolved, failure_report,
-                             memory_hits=memory_hits, question=question)
     started = time.time()
 
     if skill.name == "sandbox_executor":
@@ -240,14 +238,14 @@ async def run_skill(skill: Skill, node_id: str, graph_nodes,
                 success=False, agent_name=skill.name,
                 error="no code in upstream coder output",
                 elapsed_s=time.time() - started,
-            ), rendered
+            ), "<Sandbox skill bypasses generic prompt; runs code directly>"
         from sandbox import run_python
         out = run_python(code)
         return AgentResult(
             success=(out["exit_code"] == 0 and not out["timed_out"]),
             agent_name=skill.name, output=out,
             elapsed_s=time.time() - started,
-        ), rendered
+        ), "<Sandbox skill bypasses generic prompt; runs code directly>"
 
     if skill.name == "browser":
         # Same shape as sandbox_executor: the Browser skill owns its own
@@ -269,7 +267,7 @@ async def run_skill(skill: Skill, node_id: str, graph_nodes,
         result = await sk.run(node_spec)
         if not result.elapsed_s:
             result.elapsed_s = time.time() - started
-        return result, rendered
+        return result, "<Browser skill bypasses generic prompt; manages its own cascade>"
 
     if skill.name == "computer":
         node_dict = graph_nodes[node_id]
@@ -280,7 +278,7 @@ async def run_skill(skill: Skill, node_id: str, graph_nodes,
             if r.get("kind") == "upstream" and isinstance(r.get("output"), dict):
                 out = r["output"]
                 content = out.get("content") or ""
-                # Distiller/researcher outputs store data in 'fields' or 'text', not 'content'
+                # Distiller/researcher outputs store data in 'fields', 'text', or 'findings', not 'content'
                 if not content:
                     fields = out.get("fields")
                     if isinstance(fields, dict):
@@ -288,6 +286,8 @@ async def run_skill(skill: Skill, node_id: str, graph_nodes,
                         content = _json.dumps(fields, ensure_ascii=False)
                     elif out.get("text"):
                         content = out["text"]
+                    elif out.get("findings"):
+                        content = out["findings"]
                 if content:
                     upstream_parts.append(
                         f"[{r['id']} ({r.get('skill', '')}) result]: {content}"
@@ -308,7 +308,10 @@ async def run_skill(skill: Skill, node_id: str, graph_nodes,
         result = await sk.run(node_spec)
         if not result.elapsed_s:
             result.elapsed_s = time.time() - started
-        return result, rendered
+        return result, "<Computer skill bypasses generic prompt; manages its own cascade>"
+
+    rendered = render_prompt(skill, query, resolved, failure_report,
+                             memory_hits=memory_hits, question=question)
 
     if skill.tools_allowed:
         # Multi-turn tool-use loop. mcp_runner opens one MCP stdio session
