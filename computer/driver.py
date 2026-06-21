@@ -296,7 +296,22 @@ class AXDriver:
                     failures += 1
 
                 outcomes.append(outcome)
-                history.append(f"turn {turn}: {atype} → {outcome}")
+
+                if atype == "click":
+                    act_str = f"click({act.get('element_index')})"
+                elif atype == "type":
+                    act_str = f"type({act.get('element_index')}, {act.get('value')!r})"
+                elif atype == "key":
+                    act_str = f"key({act.get('value')!r})"
+                elif atype == "hotkey":
+                    act_str = f"hotkey({act.get('value')!r})"
+                elif atype == "scroll":
+                    act_str = f"scroll({act.get('direction')}, {act.get('amount')})"
+                elif atype == "wait":
+                    act_str = f"wait({act.get('seconds')})"
+                else:
+                    act_str = atype
+                history.append(f"turn {turn}: {act_str} → {outcome}")
 
             self.steps.append(StepRecord(turn, thinking, actions, "; ".join(outcomes) or "ok"))
 
@@ -367,6 +382,7 @@ class VisionDriver:
 
     async def run(self) -> DriverResult:
         failures = 0
+        history: list[str] = []
 
         for turn in range(1, self.cfg.max_steps + 1):
             # ── Scan (SOM mode: screenshot with numbered marks) ───────────────
@@ -395,9 +411,11 @@ class VisionDriver:
             image_url = _to_data_url(screenshot_path)
             tree_md = state.get("tree_markdown", "")
 
+            hist_str = "\n".join(history[-5:]) if history else "none"
             prompt = f"Goal: {self.cfg.goal}"
             if tree_md:
                 prompt += f"\n\nAX Tree / element legend:\n{tree_md}"
+            prompt += f"\n\nRecent actions:\n{hist_str}"
 
             # ── Decide ────────────────────────────────────────────────────────
             try:
@@ -441,6 +459,22 @@ class VisionDriver:
                     failures += 1
 
                 outcomes.append(outcome)
+
+                if atype == "click":
+                    act_str = f"click({act.get('mark')})"
+                elif atype == "click_xy":
+                    act_str = f"click_xy({act.get('x')}, {act.get('y')})"
+                elif atype == "type":
+                    act_str = f"type({act.get('mark')}, {act.get('value')!r})"
+                elif atype == "key":
+                    act_str = f"key({act.get('value')!r})"
+                elif atype == "scroll":
+                    act_str = f"scroll({act.get('direction')}, {act.get('amount')})"
+                elif atype == "wait":
+                    act_str = f"wait({act.get('seconds')})"
+                else:
+                    act_str = atype
+                history.append(f"turn {turn}: {act_str} → {outcome}")
 
             self.steps.append(StepRecord(turn, thinking, actions, "; ".join(outcomes) or "ok"))
             if failures >= self.cfg.max_failures:

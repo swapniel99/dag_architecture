@@ -64,12 +64,13 @@ Available skills:
                        app_name (str) — human-readable app name, e.g.
                          "Safari", "Mail", "Finder", or any installed app
                      Optional metadata:
-                       force_path (str) — "vision" to skip AX and go
-                         straight to screenshot + vision LLM. Use when
-                         the task is primarily visual (like reading a game
-                         board, observing a canvas, or describing UI layout).
-                         Set this immediately for visual tasks to save time
-                         instead of relying on the cascade to escalate.
+                        force_path (str) — "vision" to skip AX and go
+                          straight to screenshot + vision LLM. Use when
+                          the task is primarily visual (like Chess/games,
+                          reading a game board, observing a canvas, or
+                          describing UI layout). ALWAYS set force_path="vision"
+                          for Chess, games, or visual board tasks to prevent
+                          the text-only cascade from failing.
                      Scoping: computer nodes are scoped by metadata.goal.
                      Do NOT list USER_QUERY in a computer node's inputs
                      unless the goal literally IS the full user query.

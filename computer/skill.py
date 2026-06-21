@@ -149,12 +149,11 @@ class ComputerSkill:
                 pass
 
         def _pick_window(wins: list) -> int | None:
-            # Prefer on-current-space / on-screen; fall back to largest by area.
-            for w in wins:
-                if w.get("on_current_space") or w.get("is_on_screen"):
-                    return w.get("window_id")
-            if wins:
-                best = max(wins, key=lambda w: (
+            # Prefer on-current-space / on-screen; among those, pick largest by area.
+            visible = [w for w in wins if w.get("on_current_space") or w.get("is_on_screen")]
+            candidates = visible if visible else wins
+            if candidates:
+                best = max(candidates, key=lambda w: (
                     (w.get("bounds") or {}).get("width", 0) *
                     (w.get("bounds") or {}).get("height", 0)
                 ))
@@ -314,6 +313,14 @@ class ComputerSkill:
         return self._pack_error(
             app_id, goal, "interaction_failed",
             f"all layers exhausted; last: {vis_result.note}",
+            path="vision",
+            turns=len(vis_result.steps),
+            actions=[
+                {"turn": s.turn, "thinking": s.thinking,
+                 "actions": s.actions, "outcome": s.outcome}
+                for s in vis_result.steps
+            ],
+            recording_dir=recording_dir,
             elapsed=time.time() - t0,
         )
 
@@ -450,10 +457,13 @@ class ComputerSkill:
             output=out.model_dump(), elapsed_s=elapsed,
         )
 
-    def _pack_error(self, app, goal, code, msg, *, elapsed=0.0) -> AgentResult:
+    def _pack_error(self, app, goal, code, msg, *, path: str = "extract",
+                    turns: int = 0, actions: list[dict] = [],
+                    recording_dir: str | None = None, elapsed=0.0) -> AgentResult:
         out = ComputerOutput(
-            app=app or "", goal=goal, path="extract",
-            turns=0, content=None,
+            app=app or "", goal=goal, path=path,
+            turns=turns, content=None, actions=actions,
+            recording_dir=recording_dir,
         )
         return AgentResult(
             success=False, agent_name=self.NAME,
