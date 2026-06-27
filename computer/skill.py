@@ -458,11 +458,11 @@ class ComputerSkill:
         )
 
     def _pack_error(self, app, goal, code, msg, *, path: str = "extract",
-                    turns: int = 0, actions: list[dict] = [],
+                    turns: int = 0, actions: list[dict] | None = None,
                     recording_dir: str | None = None, elapsed=0.0) -> AgentResult:
         out = ComputerOutput(
             app=app or "", goal=goal, path=path,
-            turns=turns, content=None, actions=actions,
+            turns=turns, content=None, actions=actions or [],
             recording_dir=recording_dir,
         )
         return AgentResult(

@@ -19,7 +19,6 @@ import asyncio
 import base64
 import json
 import os
-import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -340,7 +339,10 @@ class AXDriver:
             # focused after cmd+n anyway.
             text = value or ""
             if text:
-                subprocess.run(["pbcopy"], input=text.encode(), check=True)
+                proc = await asyncio.create_subprocess_exec(
+                    "pbcopy", stdin=asyncio.subprocess.PIPE
+                )
+                await proc.communicate(text.encode())
                 await asyncio.sleep(0.05)
                 if elem is not None:
                     try:
@@ -500,7 +502,10 @@ class VisionDriver:
                 except Exception:
                     pass
             if text:
-                subprocess.run(["pbcopy"], input=text.encode(), check=True)
+                proc = await asyncio.create_subprocess_exec(
+                    "pbcopy", stdin=asyncio.subprocess.PIPE
+                )
+                await proc.communicate(text.encode())
                 await asyncio.sleep(0.05)
                 await self.cua.call("hotkey", {
                     "pid": self.pid, "window_id": self.window_id, "keys": ["cmd", "v"]
@@ -536,9 +541,9 @@ class RawCDPClient:
         if self._ws_url:
             return self._ws_url
         # Retry for up to 8s — freshly-launched Electron apps take 2-5s to open CDP.
-        deadline = asyncio.get_event_loop().time() + 8.0
+        deadline = asyncio.get_running_loop().time() + 8.0
         last_err: Exception = RuntimeError("CDP not ready")
-        while asyncio.get_event_loop().time() < deadline:
+        while asyncio.get_running_loop().time() < deadline:
             try:
                 t = aiohttp.ClientTimeout(total=3)
                 async with aiohttp.ClientSession() as s:

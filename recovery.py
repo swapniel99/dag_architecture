@@ -32,8 +32,17 @@ def classify_failure(error_text: str) -> RecoveryReason:
         return "upstream_failure"
     if "malformed" in e or "validationerror" in e or "validation error" in e:
         return "validation_error"
+    transient_markers = (
+        "503", "502", "504",
+        "timeout", "timed out",
+        "connection", "connectionerror", "httpstatuserror",
+        "service unavailable", "bad gateway", "gateway timeout",
+    )
+    if any(m in e for m in transient_markers):
+        return "transient"
     # Computer-use permanent failures: all cascade layers exhausted, or macOS
-    # permission denied. Retrying with a different plan won't fix these.
+    # permission denied. Checked after transient so a gateway 503 body
+    # containing "permission denied" retries rather than being skipped.
     non_retryable_markers = (
         "all layers exhausted",
         "screen recording",
@@ -45,14 +54,6 @@ def classify_failure(error_text: str) -> RecoveryReason:
     )
     if any(m in e for m in non_retryable_markers):
         return "validation_error"
-    transient_markers = (
-        "503", "502", "504",
-        "timeout", "timed out",
-        "connection", "connectionerror", "httpstatuserror",
-        "service unavailable", "bad gateway", "gateway timeout",
-    )
-    if any(m in e for m in transient_markers):
-        return "transient"
     return "upstream_failure"
 
 
