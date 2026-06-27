@@ -1,0 +1,1 @@
+Find the date on which telegram got banned in India and save it as a new Obsidian note titled "Telegram Banned" and make a note about what happened

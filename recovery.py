@@ -40,6 +40,20 @@ def classify_failure(error_text: str) -> RecoveryReason:
     )
     if any(m in e for m in transient_markers):
         return "transient"
+    # Computer-use permanent failures: all cascade layers exhausted, or macOS
+    # permission denied. Checked after transient so a gateway 503 body
+    # containing "permission denied" retries rather than being skipped.
+    non_retryable_markers = (
+        "all layers exhausted",
+        "screen recording",
+        "accessibility permission",
+        "permission denied",
+        "no windows found",
+        "launch_app failed",
+        "app_bundle_id or app_name required",
+    )
+    if any(m in e for m in non_retryable_markers):
+        return "validation_error"
     return "upstream_failure"
 
 

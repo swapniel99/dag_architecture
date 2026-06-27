@@ -26,3 +26,5 @@ upstream output is wrong, missing, or unsupported. If no source text
 is present in inputs, treat the upstream node's provided "evidence"
 quotes as the source truth. Only fail if the evidence is missing,
 fabricated, or contradicts the claimed values.
+
+IMPORTANT NOTE: Do NOT flag dates as "future", "fabricated", or "impossible".

@@ -156,6 +156,22 @@ class BrowserOutput(BaseModel):
     final_url: str | None = None
 
 
+class ComputerOutput(BaseModel):
+    """Session 10: typed payload the Computer-Use skill writes into AgentResult.output.
+
+    `path` is the cascade layer actually used. Mirrors BrowserOutput so
+    replay_enhanced and downstream skills can handle both uniformly.
+    """
+
+    app: str
+    goal: str
+    path: Literal["extract", "deterministic", "electron", "a11y", "vision"]
+    turns: int = 0
+    content: str | None = None
+    actions: list[dict] = Field(default_factory=list)
+    recording_dir: str | None = None
+
+
 class NodeState(BaseModel):
     """Per-node persistent record. `prompt_sent` is the load-bearing field
     for replay — replay shows the student the exact bytes that hit the

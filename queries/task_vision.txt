@@ -1,0 +1,1 @@
+open https://lichess.org/training in Safari and describe the chess puzzle board position — list every visible piece and its square using algebraic notation

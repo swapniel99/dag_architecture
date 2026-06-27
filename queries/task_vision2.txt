@@ -1,0 +1,1 @@
+open Chess app and describe the current board position — list every visible piece and its square using algebraic notation

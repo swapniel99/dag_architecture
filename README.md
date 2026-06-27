@@ -1,8 +1,8 @@
-# EAGV3 Session 9 — Browser Skill + Enhanced Replay
+# EAGV3 Session 10 — Computer-Use Skill
 
-A growing-graph multi-agent orchestrator extended with a **Browser skill** that performs real interactive web browsing via a four-layer cascade, and an **enhanced replay viewer** that produces a structured session report.
+A growing-graph multi-agent orchestrator extended with a **Computer-Use skill** that drives native macOS desktop apps through a five-layer cascade via `cua-driver`, plugging into the same Session 9 runtime without modifying the orchestrator.
 
-**Demo Video:** [Browser Skill](https://youtu.be/_5K4t9dja5c)
+**Demo Video:** [Watch on YouTube](https://youtu.be/iIYy5Z6QAo8)
 
 ---
 
@@ -12,213 +12,174 @@ A growing-graph multi-agent orchestrator extended with a **Browser skill** that 
 # Install
 uv sync
 
-# Gateway (separate terminal) — auto-started by flow.py if not running
+# Start cua-driver daemon
+cua-driver serve &
+
+# Gateway (auto-started by flow.py if not running)
 cd ../gateway && uv run main.py
 
-# Run a browser query
-uv run python flow.py "compare 3 different brand laptops under Rs. 80000 on amazon"
+# Run a computer-use task
+./run_query.sh task_calc_notes
+./run_query.sh task_obsidian        # Obsidian must be pre-launched with CDP port
+./run_query.sh task_vision2
 
-# Enhanced replay report
+# Replay session report
 uv run python replay_enhanced.py <session_id>
-uv run python replay_enhanced.py            # list available sessions
 ```
 
 ---
 
-## Browser Skill
+## What Was Built
 
-### What was built
+`computer/` — three new files, zero orchestrator modification:
 
-`browser/skill.py` — the only new file. Plugs into the orchestrator via `agent_config.yaml` (no orchestrator code modified). Implements a four-layer cascade:
+| File | Role |
+|---|---|
+| `computer/cua.py` | `CUAClient` — wraps `cua-driver call <tool> '<json>'` via asyncio subprocess |
+| `computer/driver.py` | `AXDriver` (Layer 2b) + `VisionDriver` (Layer 3) + `ElectronDriver` |
+| `computer/skill.py` | `ComputerSkill` — cascade entry point, returns `AgentResult` |
 
-| Layer | Mechanism | When used |
-|---|---|---|
-| 1 — extract | `trafilatura` over bare HTTP GET | Static pages, no interaction needed |
-| 2a — deterministic | Playwright + caller-supplied CSS selectors | When `metadata.selectors` given |
-| 2b — a11y | `A11yDriver` — LLM drives accessibility tree | Interactive pages, text-only |
-| 3 — vision | `SetOfMarksDriver` — LLM drives screenshots | When a11y insufficient |
-
-Gateway-block detection (CAPTCHA / Cloudflare / login wall) short-circuits all layers immediately and surfaces `error_code="gateway_blocked"` for recovery routing.
-
-### Browser skill contract
-
-Input via `NodeSpec.metadata`:
-- `url` — page to open (required)
-- `goal` — natural-language task (required)
-- `selectors` — list of `{action, selector, value?}` for deterministic path (optional)
-- `force_path` — pin to `"a11y"` or `"vision"` (optional, for testing)
-
-Output: `BrowserOutput` in `AgentResult.output`:
-```json
-{
-  "url": "...",
-  "goal": "...",
-  "path": "a11y",
-  "turns": 4,
-  "content": "...",
-  "actions": [{"turn": 1, "actions": [...], "outcome": "ok"}, ...],
-  "final_url": "..."
-}
-```
-
-### No orchestrator modification
-
-Registered in `agent_config.yaml`:
-```yaml
-browser:
-  prompt: prompts/browser.md
-  temperature: 0.0
-  max_tokens: 1024
-  description: |
-    Fetches and interacts with web pages through a four-layer cascade
-    (extract, deterministic, a11y, vision). metadata.url + metadata.goal required.
-```
-
-The dispatcher in `skills.py` routes `skill == "browser"` to `BrowserSkill.run()` directly — same pattern as every other skill.
+One `if skill.name == "computer"` branch added to `skills.py`. Entry added to `agent_config.yaml`. No other orchestrator files modified.
 
 ---
 
-## Demo — Laptop Comparison
-
-**Query:** `compare 3 different brand laptops under Rs. 80000 on amazon`
-
-**Session:** `s8-1c161eb6`
-
-**Run:** `uv run python replay_enhanced.py s8-1c161eb6`
-
-### 1. Original User Goal
+## Five-Layer Architecture
 
 ```
-compare 3 different brand laptops under Rs. 80000 on amazon
+Layer 1:  Extract          AX tree read-only → zero LLM cost
+Layer 2a: Deterministic    Known hotkey sequences → zero LLM cost
+Layer 2b: AX + LLM         get_window_state → tree_markdown → cheap text LLM → element_index action
+Electron: CDP              launch_app(electron_debugging_port=9222) → page(selector) via CDP
+Layer 3:  Vision           get_window_state(capture_mode=vision) → annotate marks → vision LLM → pixel click
 ```
 
-### 2. Planner DAG
+Each layer is tried in order. The skill returns as soon as a layer succeeds; vision is a last resort.
 
-**Initial plan:**
-```
-browser  → (none)         url=amazon.in/s?k=laptops+under+80000   [b1]
-distiller → n:b1                                                   [d1]
-formatter → USER_QUERY, n:d1                                       [out]
-```
+**Scan-act-verify invariant:** `get_window_state` is called *before* every element-indexed action (builds the index cache) and *after* every action (confirms state changed). `element_index` values are turn-scoped — they shift on every UI reflow.
 
-**Recovery plan** (critic rejected two HP laptops — constraint: 3 *different* brands):
-```
-browser  → (none)         url=amazon.in/s?k=laptops+under+80000   [b1]
-distiller → n:b1                                                   [d1]
-critic    → n:d1                                                   [c1]
-formatter → USER_QUERY, n:d1                                       [out]
-```
+**macOS background-launch guard:** `launch_app` does not steal focus. After every `launch_app`, run `osascript activate` + `sleep 0.5` before the first scan, or `element_count` will be 0.
 
-### 3. Browser Path Chosen
-
-Both browser nodes used **a11y** (A11yDriver via Playwright). Amazon renders product listings with JavaScript, making bare HTTP extract insufficient.
-
-### 4. Browser Actions
-
-**Browser node #1 (n:2) — 4 turns:**
-```
-turn  1  click mark=83                      [ok]   ← brand filter panel
-turn  2  click mark=72                      [ok]   ← select brand filter
-turn  3  scroll direction=down value=500    [ok]   ← reveal more results
-turn  4  done success=True  → Lenovo ₹73,999 / HP Victus ₹76,990 / HP 15 ₹67,900
-```
-
-**Browser node #2 (n:7) — 4 turns, recovery run:**
-```
-turn  1  click mark=85                                        [ok]   ← search box
-turn  2  type "Dell laptop under 80000" + click search        [ok]
-turn  3  type "laptop under 80000 INR"  + click search        [ok]
-turn  4  done success=True  → Dell ₹76,990 / HP ₹66,990 / Acer ₹48,900
-```
-
-Total visible browser actions: **8 actions across 8 turns**.
-
-### 5. Screenshots / Page-State Logs
-
-Per-turn screenshots and accessibility-tree legends saved under `state/sessions/s8-1c161eb6/browser/`:
-
-```
-browser_1781290108/a11y/turn_01_raw.png   turn_01_legend.txt
-                        turn_02_raw.png   turn_02_legend.txt
-                        turn_03_raw.png   turn_03_legend.txt
-                        turn_04_raw.png   turn_04_legend.txt
-
-browser_1781290128/a11y/turn_01_raw.png   turn_01_legend.txt
-                        turn_02_raw.png   turn_02_legend.txt
-                        turn_03_raw.png   turn_03_legend.txt
-                        turn_04_raw.png   turn_04_legend.txt
-```
-
-### 6. Extracted Data
-
-**Browser node #1 (driver summary):**
-```
-1. Lenovo Ideapad Slim 3: ₹73,999, 13th Gen Intel Core i7 13620H, 16GB RAM, 512GB SSD.
-2. HP Victus: ₹76,990, AMD Ryzen 7 7445HS, 4GB RTX 2050, 16GB DDR5, 512GB SSD.
-3. HP 15: ₹67,900, 13th Gen Intel Core i5-1334U, 16GB DDR4, 512GB SSD.
-```
-
-**Browser node #2 (driver summary — recovery, 3 distinct brands):**
-```
-1. Dell: Dell G Series G15-5530, ₹76,990, 13th Gen Intel Core i5-13450HX, NVIDIA RTX 3050-6GB, 16GB DDR5, 512GB SSD.
-2. HP: HP 15 Smartchoice fc1038AU, ₹66,990, AMD Ryzen 7 7735HS, 16GB DDR5, 512GB SSD.
-3. Acer: Acer Smartchoice Aspire One A114-43, ₹48,900, AMD Ryzen 3-7320U, 8GB LPDDR5, 256GB SSD.
-```
-
-### 7. Final Comparison Table
-
-| Brand | Model | Price | Key Specifications |
-| :--- | :--- | :--- | :--- |
-| Dell | G Series G15-5530 | ₹76,990 | 13th Gen Intel Core i5-13450HX, NVIDIA RTX 3050-6GB, 16GB DDR5, 512GB SSD |
-| HP | 15 Smartchoice fc1038AU | ₹66,990 | AMD Ryzen 7 7735HS, 16GB DDR5, 512GB SSD |
-| Acer | Smartchoice Aspire One A114-43 | ₹48,900 | AMD Ryzen 3-7320U, 8GB LPDDR5, 256GB SSD |
-
-### 8. Turn Count and Cost Summary
-
-| Node | Skill | Status | Elapsed | Notes |
-|---|---|---|---|---|
-| n:1 | planner | complete | 1.5s | |
-| n:2 | browser | complete | 15.1s | browser_turns=4 |
-| n:3 | distiller | complete | 1.4s | |
-| n:4 | formatter | **skipped** | — | critic rejected; recovery re-planned |
-| n:5 | critic | complete | 1.4s | verdict=fail (two HP brands) |
-| n:6 | planner | complete | 2.0s | recovery planner |
-| n:7 | browser | complete | 17.6s | browser_turns=4 |
-| n:8 | distiller | complete | 1.3s | |
-| n:9 | critic | complete | 0.7s | verdict=pass |
-| n:10 | formatter | complete | 1.1s | |
-
-**Gateway cost breakdown (session-scoped via `?session=s8-1c161eb6`):**
-
-| Agent | Provider | Calls | In tokens | Out tokens | Cost |
-|---|---|---|---|---|---|
-| browser | gemini | 8 | 18,065 | 1,129 | $0.000000 |
-| critic | groq | 2 | 1,403 | 492 | $0.000579 |
-| distiller | gemini | 2 | 10,924 | 581 | $0.000000 |
-| formatter | gemini | 1 | 745 | 228 | $0.000000 |
-| planner | gemini | 2 | 9,924 | 712 | $0.000000 |
-| **TOTAL** | | **15** | **41,061** | **3,142** | **$0.000579** |
-
-- Total nodes (graph): 10 · on disk: 9 · skipped: 1
-- Browser nodes: 2 · Total browser turns: 8
-- Total elapsed: **42.2s**
+**Recording:** Every run calls `start_recording(output_dir=...)` before the cascade and `stop_recording()` in a `finally` block. Trajectories saved to `state/sessions/<sid>/computer/rec_<ts>/`.
 
 ---
 
-## Enhanced Replay Viewer (`replay_enhanced.py`)
+## Three Tasks
 
-Prints a structured 8-section report for any session in one non-interactive pass:
+### Task 1 — Calculator × Notes (multi-app, zero vision)
 
+**Query:** `compute 57 × 83 in the Calculator app using the keypad buttons, then open Notes and create a new note that records the result`
+
+**File:** `queries/task_calc_notes.txt`
+
+**What happens:**
+1. Planner emits two `computer` nodes: Calculator node (Layer 2a) → Notes node (Layer 2b), chained via `inputs: ["n:calc"]`.
+2. Calculator node uses deterministic hotkeys (`5`, `7`, `×`, `8`, `3`, `=`) — no LLM in the loop.
+3. Notes node reads the result from the upstream `AgentResult`, opens Notes via `cmd+n`, types the result into the new note body.
+
+**Layer chosen:** `path=deterministic` (Calculator) + `path=a11y` (Notes)  
+**Vision calls:** zero  
+**Constraint satisfied:** ✅ zero-vision
+
+---
+
+### Task 2 — Obsidian (Electron / CDP)
+
+**Query:** `find the opening paragraph of the latest AI news article on techcrunch.com and save it as a new Obsidian note titled "AI News"`
+
+**File:** `queries/task_obsidian.txt`
+
+**What happens:**
+1. Planner emits a `browser` node for TechCrunch → `distiller` → `computer` node for Obsidian, with distiller output in inputs.
+2. Obsidian node detects Electron (`AXWebArea` opaque to AX tree) → launches with `electron_debugging_port=9222` → drives via CDP `page` tool.
+3. Creates note via `cmd+n`, sets title, pastes article paragraph via clipboard.
+
+**Layer chosen:** `path=electron` (turns=2)  
+**Constraint satisfied:** ✅ Electron
+
+**Setup note:** Obsidian must be launched with the debugging port before the run:
 ```bash
-uv run python replay_enhanced.py <session_id>
+cua-driver call launch_app '{"bundle_id": "md.obsidian", "electron_debugging_port": 9222}'
 ```
+If Obsidian is already running without the port, the CDP WebSocket is not available and the skill times out on the Electron path.
 
-**How it works:**
-- Reads `graph.json` for the authoritative node list (catches skipped nodes that have no `.json` file)
-- Reconstructs the Planner DAG from planner node output (graph edges are not populated at runtime)
-- Shows browser path, per-turn actions, and screenshot paths per browser node
-- Fetches real per-agent token and dollar costs from gateway `GET /v1/cost/by_agent?session=<sid>`
-- Falls back gracefully if gateway is unreachable
+---
+
+### Task 3 — Chess.app board description (vision, canvas)
+
+**Query:** `open Chess app and describe the current board position — list every visible piece and its square using algebraic notation, and say whose turn it is`
+
+**File:** `queries/task_vision2.txt`
+
+**What happens:**
+1. Planner emits one `computer` node for Chess with `force_path="vision"` to bypass AX tree scanning.
+2. Skill goes straight to `VisionDriver` (Layer 3).
+3. VisionDriver captures screenshot with set-of-marks annotations → vision LLM reads board/pieces and performs the move or describes the position.
+
+**Layer chosen:** `path=vision` (turns=1)  
+**Constraint satisfied:** ✅ vision
+
+---
+
+## Cascade Decisions
+
+**When not to escalate to vision:**
+- Lichess (`task_vision.txt`) has rich ARIA labels on its board — the a11y path reads piece positions directly. Vision would be 10× more expensive for the same result. The cascade correctly landed on `path=a11y`.
+- Notes, Calculator, Mail: full AX trees. Vision never needed.
+
+**When vision is correct:**
+- Chess.app 3D board: Metal renderer, no AX nodes for pieces. AXDriver returns `element_count > 0` for window chrome (menu bar, toolbar) but the board area is opaque. `escalate` emitted → VisionDriver.
+
+**Deterministic over AX:**
+- Calculator arithmetic is a fixed sequence of button presses. Sending `5`, `7`, `×`, `8`, `3`, `=` via `press_key` is cheaper and more reliable than asking a text LLM to read the AX tree and pick element indices each turn.
+
+**URL typing excluded from Layer 2a:**
+- The hotkey planner prompt explicitly excludes URLs and multi-character text from the deterministic path. Attempting to type a URL character-by-character via `press_key` produces double input when Layer 2b also types via clipboard paste (`httpshttps://...`). Layer 2a returns `hotkeys=[]` for any goal requiring text input; Layer 2b handles it with `pbcopy` + `cmd+v`.
+
+---
+
+## Failure Modes Encountered
+
+### 1. Wrong window selected (toolbar vs. main window)
+
+`list_windows` for Safari returned multiple windows. The first window (height=39px, the toolbar strip) was selected instead of the main content window. `get_window_state` on the toolbar returned 0 actionable content elements.
+
+**Fix:** `_pick_window()` in `skill.py` filters for visible windows (on-screen/on-space), and among those candidates, selects the largest by pixel area.
+
+### 2. Chess `list_windows` returns `[]`
+
+Chess is a sandboxed game app. `launch_app` and `list_windows` both return no windows. The standard window-selection code produced `window_id=None` → immediate failure.
+
+**Fix:** After `_pick_window()` returns `None`, probe `window_id=1` directly via `get_window_state(pid, window_id=1, capture_mode="ax")`. If `element_count > 0`, adopt `window_id=1`. Chess responds to AX on window 1 even though the window server doesn't list it.
+
+### 3. Planner split single-app navigation+vision into two nodes
+
+Planner applied the multi-app chaining pattern to tasks like "open Safari, navigate to URL, describe the board." This emitted two `computer` nodes for the same app. The second node re-screenshotted independently (different board state on lichess rotating puzzles) rather than using Layer 1 extract on the first node's output.
+
+**Fix:** Added a "Single-app rule" to `prompts/planner.md`: one computer node per app; the cascade handles AX interaction then escalates to vision internally. Also clarified that `force_path` should not be set just because the final observation is visual.
+
+### 4. VisionDriver `type` action fails for custom input fields
+
+Grapher's equation input field rejects `type_text` from cua-driver (custom renderer). Text was not entered.
+
+**Fix:** VisionDriver's `type` action now uses clipboard paste: `pbcopy` writes the text, then `hotkey(cmd+v)` pastes it. This works for any field that accepts standard paste.
+
+### 5. Obsidian cold-start without CDP port
+
+When Obsidian is not running, `launch_app` without `electron_debugging_port` opens it in normal mode. The CDP WebSocket on port 9222 is never available. The Electron driver times out (~8s) and falls through to the AX path, which returns an opaque `AXWebArea` with no usable elements.
+
+**Root cause:** `launch_app` with `electron_debugging_port` only works if the app is not already running (macOS re-uses the existing process). Pre-launching Obsidian with the port once per session is the reliable workaround.
+
+### 6. Stateless VLM forgets past actions
+
+Chess moves require multi-turn interaction (e.g., click e2 on Turn 1, then click e4 on Turn 2). Since the vision LLM is stateless, it would repeatedly click the starting square without realizing it had already done so.
+
+**Fix:** Pass `Recent actions` (the history of previous actions and their outcomes) into the VisionDriver prompt.
+
+### 7. VLM short-circuits on "describe and move" goals
+
+If a task contains both descriptive and interactive requirements (e.g. "describe board and make a move"), the VLM would call `done` immediately after seeing the initial board, without executing the move.
+
+**Fix:** Clarify in `prompts/computer_vision.md` that for interactive goals, the VLM must perform all required interactions first, and only call `done` on a later turn when all actions are finished.
 
 ---
 
@@ -228,33 +189,25 @@ uv run python replay_enhanced.py <session_id>
 flow.py (Graph + Executor + CLI)
     ↓ spawns
 skills.py (SkillRegistry + run_skill)
-    ├── gateway.py → llm_gatewayV8 :8108   (all LLM skills)
+    ├── gateway.py → llm_gatewayV8 :8109   (all LLM skills)
     ├── mcp_runner.py → mcp_server.py       (tool-use loop)
     ├── sandbox.py                          (subprocess Python runner)
-    └── browser/skill.py                   (S9: cascade browser)
-            ├── Layer 1: trafilatura extract
-            ├── Layer 2a: deterministic Playwright selectors
-            ├── Layer 2b: A11yDriver (accessibility tree + LLM)
-            └── Layer 3: SetOfMarksDriver (screenshot + vision LLM)
+    ├── browser/skill.py                   (S9: cascade browser)
+    └── computer/skill.py                  (S10: cascade desktop)
+            ├── Layer 1:  AX extract (read-only, $0)
+            ├── Layer 2a: deterministic hotkeys ($0)
+            ├── Layer 2b: AXDriver (AX tree + cheap text LLM)
+            ├── Electron: ElectronDriver (CDP via cua-driver page tool)
+            └── Layer 3:  VisionDriver (screenshot + set-of-marks + vision LLM)
     ↓ persists to
 state/sessions/<sid>/
     graph.json          NetworkX DiGraph (node_link_data)
     query.txt
     nodes/n_*.json      NodeState per node
-    browser/            per-turn screenshots + a11y legends
+    computer/           per-turn screenshots + trajectory recordings
 ```
 
-**Five graph-growth actors:** Planner seed · dynamic successors · static `internal_successors` · Critic auto-insertion · recovery re-plan
-
-**Recovery policy:**
-
-| Error class | Action |
-|---|---|
-| transient (503/502/timeout) | skip — gateway already retried |
-| validation_error | skip — fix the prompt |
-| upstream_failure + skill=planner | skip — would loop |
-| upstream_failure + other | replan — new Planner queued |
-| critic-fail | replan (cap: `MAX_PER_TARGET = 2` per branch) |
+**Graph growth actors:** Planner seed · dynamic successors · static `internal_successors` · Critic auto-insertion · recovery re-plan
 
 ---
 
@@ -262,17 +215,21 @@ state/sessions/<sid>/
 
 | File | Role |
 |---|---|
-| `flow.py` | Graph + Executor + CLI. Orchestrator loop. |
-| `schemas.py` | `AgentResult`, `NodeSpec`, `NodeState`, `BrowserOutput` |
+| `flow.py` | Graph + Executor + CLI |
+| `schemas.py` | `AgentResult`, `NodeSpec`, `NodeState`, `BrowserOutput`, `ComputerOutput` |
 | `skills.py` | `SkillRegistry`, input resolution, `run_skill` dispatcher |
 | `agent_config.yaml` | Skills catalogue — prompt, tools, temperature |
 | `recovery.py` | `classify_failure` + `plan_recovery` + `handle_critic_verdict` |
+| `computer/cua.py` | `CUAClient` — asyncio subprocess wrapper for cua-driver |
+| `computer/driver.py` | `AXDriver` + `VisionDriver` + `ElectronDriver` |
+| `computer/skill.py` | `ComputerSkill` — cascade entry point |
 | `browser/skill.py` | S9: four-layer browser cascade |
 | `browser/driver.py` | `A11yDriver` + `SetOfMarksDriver` |
-| `browser/client.py` | `V9Client` — gateway HTTP client |
-| `replay_enhanced.py` | S9: structured 8-field replay report |
-| `replay.py` | S8: interactive node-by-node replay |
-| `gateway.py` | Bridge to LLM Gateway V8 on `localhost:8108` |
+| `replay_enhanced.py` | Structured 8-section session report |
+| `gateway.py` | Bridge to LLM Gateway V9 on `localhost:8109` |
 | `persistence.py` | Session writes: `graph.json` + per-node JSON |
-| `sandbox.py` | Subprocess Python runner |
-| `mcp_runner.py` | Multi-turn tool-use loop |
+| `prompts/computer.md` | System prompt for Layer 2b AX judgment LLM |
+| `prompts/computer_vision.md` | System prompt for Layer 3 vision LLM |
+| `queries/task_calc_notes.txt` | Task 1: Calculator × Notes (zero vision) |
+| `queries/task_obsidian.txt` | Task 2: Obsidian via Electron/CDP |
+| `queries/task_vision2.txt` | Task 3: Chess.app board description (vision) |

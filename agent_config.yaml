@@ -106,3 +106,20 @@ browser:
     chosen layer surfaced as output.path. Use when Researcher's
     fetch_url is insufficient: JavaScript-rendered content, interactive
     widgets, multi-page workflows.
+
+computer:
+  prompt: prompts/computer.md
+  # The Computer-Use skill owns its own cascade (AX extract → deterministic
+  # hotkeys → AX tree + LLM → vision set-of-marks) and routes each layer's
+  # gateway call internally. temperature / max_tokens kept for registry
+  # uniformity; the dispatcher ignores them.
+  temperature: 0.0
+  max_tokens: 1024
+  description: |
+    Drives native desktop apps through a four-layer cascade
+    (AX extract → deterministic hotkeys → AX tree + LLM → vision).
+    Required metadata: goal, app_bundle_id or app_name.
+    Optional: hotkeys (list[str] for Layer 2a), electron_debugging_port
+    (int, enables Electron/CDP path), force_path (pin layer).
+    Returns ComputerOutput with chosen layer in output.path.
+    Uses cua-driver daemon; daemon must be running before first call.
