@@ -1,4 +1,5 @@
 .idea/
+.serena/
 
 # secrets / env
 .env
